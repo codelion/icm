@@ -1,0 +1,410 @@
+"""
+Dataset handling for ICM.
+
+This module provides dataset loading and formatting for ICM tasks,
+supporting various formats like TruthfulQA, GSM8K, and Alpaca.
+"""
+
+import json
+import random
+from typing import Dict, List, Any, Optional, Union
+from dataclasses import dataclass
+from datasets import load_dataset as hf_load_dataset
+import logging
+
+
+@dataclass
+class ICMExample:
+    """Single example for ICM processing."""
+    input_text: str
+    metadata: Dict[str, Any]
+    
+    def __post_init__(self):
+        """Validate the example after initialization."""
+        if not isinstance(self.input_text, str):
+            raise ValueError("input_text must be a string")
+        if not isinstance(self.metadata, dict):
+            raise ValueError("metadata must be a dictionary")
+
+
+class ICMDataset:
+    """Dataset container for ICM examples."""
+    
+    def __init__(self, examples: List[ICMExample], metadata: Optional[Dict[str, Any]] = None):
+        """
+        Initialize ICM dataset.
+        
+        Args:
+            examples: List of ICM examples
+            metadata: Dataset-level metadata
+        """
+        self.examples = examples
+        self.metadata = metadata or {}
+        self.logger = logging.getLogger(__name__)
+    
+    def __len__(self) -> int:
+        """Return number of examples."""
+        return len(self.examples)
+    
+    def __getitem__(self, idx: int) -> ICMExample:
+        """Get example by index."""
+        return self.examples[idx]
+    
+    def shuffle(self, seed: Optional[int] = None) -> 'ICMDataset':
+        """Shuffle the dataset."""
+        if seed is not None:
+            random.seed(seed)
+        shuffled_examples = self.examples.copy()
+        random.shuffle(shuffled_examples)
+        return ICMDataset(shuffled_examples, self.metadata)
+    
+    def sample(self, n: int, seed: Optional[int] = None) -> 'ICMDataset':
+        """Sample n examples from the dataset."""
+        if seed is not None:
+            random.seed(seed)
+        sampled_examples = random.sample(self.examples, min(n, len(self.examples)))
+        return ICMDataset(sampled_examples, self.metadata)
+    
+    def filter_by_metadata(self, key: str, value: Any) -> 'ICMDataset':
+        """Filter examples by metadata value."""
+        filtered_examples = [
+            ex for ex in self.examples 
+            if ex.metadata.get(key) == value
+        ]
+        return ICMDataset(filtered_examples, self.metadata)
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get dataset statistics."""
+        stats = {
+            "num_examples": len(self.examples),
+            "avg_input_length": sum(len(ex.input_text) for ex in self.examples) / len(self.examples),
+            "metadata_keys": set()
+        }
+        
+        for ex in self.examples:
+            stats["metadata_keys"].update(ex.metadata.keys())
+        
+        stats["metadata_keys"] = list(stats["metadata_keys"])
+        return stats
+
+
+def load_icm_dataset(
+    dataset_name: str,
+    task_type: str = "auto",
+    split: str = "train",
+    config: Optional[str] = None,
+    sample_size: Optional[int] = None,
+    seed: int = 42
+) -> ICMDataset:
+    """
+    Load dataset for ICM processing.
+    
+    Args:
+        dataset_name: Name of dataset or path to local file
+        task_type: Type of task (classification, comparison, auto)
+        split: Dataset split to load
+        config: Dataset configuration
+        sample_size: Number of examples to sample
+        seed: Random seed
+        
+    Returns:
+        ICMDataset ready for processing
+    """
+    logger = logging.getLogger(__name__)
+    logger.info(f"Loading dataset: {dataset_name}")
+    
+    # Load raw dataset
+    if dataset_name.endswith('.json') or dataset_name.endswith('.jsonl'):
+        raw_examples = _load_local_file(dataset_name)
+    else:
+        raw_examples = _load_huggingface_dataset(dataset_name, split, config)
+    
+    # Detect task type if auto
+    if task_type == "auto":
+        task_type = _detect_task_type(raw_examples, dataset_name)
+    
+    # Convert to ICM examples based on task type
+    if task_type == "truthfulqa":
+        examples = _convert_truthfulqa(raw_examples)
+    elif task_type == "gsm8k":
+        examples = _convert_gsm8k(raw_examples)
+    elif task_type == "alpaca":
+        examples = _convert_alpaca(raw_examples)
+    elif task_type == "classification":
+        examples = _convert_classification(raw_examples)
+    elif task_type == "comparison":
+        examples = _convert_comparison(raw_examples)
+    else:
+        raise ValueError(f"Unsupported task type: {task_type}")
+    
+    # Create dataset
+    dataset = ICMDataset(examples, {"task_type": task_type, "source": dataset_name})
+    
+    # Sample if requested
+    if sample_size is not None:
+        dataset = dataset.sample(sample_size, seed)
+    
+    logger.info(f"Loaded {len(dataset)} examples for {task_type} task")
+    return dataset
+
+
+def _load_local_file(filepath: str) -> List[Dict[str, Any]]:
+    """Load dataset from local JSON/JSONL file."""
+    examples = []
+    
+    if filepath.endswith('.jsonl'):
+        with open(filepath, 'r') as f:
+            for line in f:
+                examples.append(json.loads(line))
+    else:
+        with open(filepath, 'r') as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                examples = data
+            else:
+                examples = [data]
+    
+    return examples
+
+
+def _load_huggingface_dataset(dataset_name: str, split: str, config: Optional[str]) -> List[Dict[str, Any]]:
+    """Load dataset from Hugging Face."""
+    try:
+        if config:
+            dataset = hf_load_dataset(dataset_name, config, split=split)
+        else:
+            dataset = hf_load_dataset(dataset_name, split=split)
+        return list(dataset)
+    except Exception as e:
+        raise ValueError(f"Failed to load dataset {dataset_name}: {e}")
+
+
+def _detect_task_type(examples: List[Dict[str, Any]], dataset_name: str) -> str:
+    """Auto-detect task type from dataset."""
+    dataset_name_lower = dataset_name.lower()
+    
+    if "truthfulqa" in dataset_name_lower:
+        return "truthfulqa"
+    elif "gsm8k" in dataset_name_lower:
+        return "gsm8k"
+    elif "alpaca" in dataset_name_lower:
+        return "alpaca"
+    
+    # Look at example structure
+    if examples:
+        example = examples[0]
+        
+        # Check for comparison format
+        if any(key in example for key in ["response_a", "response_b", "chosen", "rejected"]):
+            return "comparison"
+        
+        # Check for Q&A format
+        if any(key in example for key in ["question", "answer"]):
+            return "classification"
+        
+        # Check for instruction format
+        if any(key in example for key in ["instruction", "input", "output"]):
+            return "classification"
+    
+    return "classification"  # Default
+
+
+def _convert_truthfulqa(examples: List[Dict[str, Any]]) -> List[ICMExample]:
+    """Convert TruthfulQA examples to ICM format."""
+    icm_examples = []
+    
+    for example in examples:
+        question = example.get("question", "")
+        
+        # Handle multiple choice answers
+        if "mc1_targets" in example:
+            choices = example["mc1_targets"]["choices"]
+            labels = example["mc1_targets"]["labels"]
+            
+            for choice, label in zip(choices, labels):
+                input_text = f"Question: {question}\nClaim: {choice}\nI think this Claim is [True/False]"
+                metadata = {
+                    "question": question,
+                    "choice": choice,
+                    "gold_label": "True" if label == 1 else "False",
+                    "task": "truthfulness"
+                }
+                icm_examples.append(ICMExample(input_text, metadata))
+        
+        # Handle best answer format
+        elif "best_answer" in example:
+            best_answer = example["best_answer"]
+            input_text = f"Question: {question}\nClaim: {best_answer}\nI think this Claim is [True/False]"
+            metadata = {
+                "question": question,
+                "answer": best_answer,
+                "gold_label": "True",
+                "task": "truthfulness"
+            }
+            icm_examples.append(ICMExample(input_text, metadata))
+    
+    return icm_examples
+
+
+def _convert_gsm8k(examples: List[Dict[str, Any]]) -> List[ICMExample]:
+    """Convert GSM8K examples to ICM format."""
+    icm_examples = []
+    
+    for example in examples:
+        question = example.get("question", "")
+        answer = example.get("answer", "")
+        
+        # Create verification task
+        input_text = f"Question: {question}\nClaim: {answer}\nI think this Claim is [True/False]"
+        metadata = {
+            "question": question,
+            "solution": answer,
+            "gold_label": "True",  # Assuming provided answers are correct
+            "task": "mathematical_correctness"
+        }
+        icm_examples.append(ICMExample(input_text, metadata))
+    
+    return icm_examples
+
+
+def _convert_alpaca(examples: List[Dict[str, Any]]) -> List[ICMExample]:
+    """Convert Alpaca examples to ICM format."""
+    icm_examples = []
+    
+    for example in examples:
+        instruction = example.get("instruction", "")
+        input_text_field = example.get("input", "")
+        output = example.get("output", "")
+        
+        # Combine instruction and input
+        if input_text_field:
+            query = f"{instruction}\n{input_text_field}"
+        else:
+            query = instruction
+        
+        # Create comparison with a dummy alternative (this would need more sophisticated handling)
+        input_text = f"Query: {query}\nResponse A: {output}\nResponse B: I cannot help with that.\nClaim: Response A is more helpful and harmless than Response B\nI think this Claim is [True/False]"
+        metadata = {
+            "instruction": instruction,
+            "input": input_text_field,
+            "output": output,
+            "gold_label": "True",  # Assuming provided output is better
+            "task": "helpfulness_harmlessness"
+        }
+        icm_examples.append(ICMExample(input_text, metadata))
+    
+    return icm_examples
+
+
+def _convert_classification(examples: List[Dict[str, Any]]) -> List[ICMExample]:
+    """Convert generic classification examples to ICM format."""
+    icm_examples = []
+    
+    for example in examples:
+        # Try to find text and label fields
+        text_fields = ["text", "input", "question", "instruction", "content"]
+        label_fields = ["label", "output", "answer", "target"]
+        
+        text = None
+        label = None
+        
+        for field in text_fields:
+            if field in example:
+                text = example[field]
+                break
+        
+        for field in label_fields:
+            if field in example:
+                label = example[field]
+                break
+        
+        if text is None:
+            continue
+        
+        input_text = f"Input: {text}\nClaim: [This needs to be classified]\nI think this Claim is [True/False]"
+        metadata = {
+            "original_text": text,
+            "gold_label": str(label) if label is not None else "Unknown",
+            "task": "classification"
+        }
+        icm_examples.append(ICMExample(input_text, metadata))
+    
+    return icm_examples
+
+
+def _convert_comparison(examples: List[Dict[str, Any]]) -> List[ICMExample]:
+    """Convert comparison examples to ICM format."""
+    icm_examples = []
+    
+    for example in examples:
+        # Try to find comparison fields
+        if "chosen" in example and "rejected" in example:
+            response_a = example["chosen"]
+            response_b = example["rejected"]
+            preferred = "A"
+        elif "response_a" in example and "response_b" in example:
+            response_a = example["response_a"]
+            response_b = example["response_b"]
+            preferred = example.get("preferred", "A")
+        else:
+            continue
+        
+        query = example.get("query", example.get("prompt", "Compare these responses"))
+        
+        input_text = f"Query: {query}\nResponse A: {response_a}\nResponse B: {response_b}\nClaim: Response A is better than Response B\nI think this Claim is [True/False]"
+        metadata = {
+            "query": query,
+            "response_a": response_a,
+            "response_b": response_b,
+            "gold_label": "True" if preferred == "A" else "False",
+            "task": "comparison"
+        }
+        icm_examples.append(ICMExample(input_text, metadata))
+    
+    return icm_examples
+
+
+def create_synthetic_dataset(
+    task_type: str,
+    num_examples: int = 100,
+    seed: int = 42
+) -> ICMDataset:
+    """
+    Create a synthetic dataset for testing.
+    
+    Args:
+        task_type: Type of task to create
+        num_examples: Number of examples to generate
+        seed: Random seed
+        
+    Returns:
+        Synthetic ICM dataset
+    """
+    random.seed(seed)
+    examples = []
+    
+    if task_type == "math":
+        for i in range(num_examples):
+            a = random.randint(1, 100)
+            b = random.randint(1, 100)
+            correct_answer = a + b
+            wrong_answer = correct_answer + random.randint(1, 10)
+            
+            # Correct solution
+            input_text = f"Question: What is {a} + {b}?\nClaim: {a} + {b} = {correct_answer}\nI think this Claim is [True/False]"
+            examples.append(ICMExample(input_text, {"gold_label": "True", "task": "math"}))
+            
+            # Wrong solution
+            input_text = f"Question: What is {a} + {b}?\nClaim: {a} + {b} = {wrong_answer}\nI think this Claim is [True/False]"
+            examples.append(ICMExample(input_text, {"gold_label": "False", "task": "math"}))
+    
+    elif task_type == "comparison":
+        for i in range(num_examples):
+            query = f"Which number is larger?"
+            a = random.randint(1, 100)
+            b = random.randint(1, 100)
+            
+            input_text = f"Query: {query}\nResponse A: {a}\nResponse B: {b}\nClaim: Response A is larger than Response B\nI think this Claim is [True/False]"
+            examples.append(ICMExample(input_text, {"gold_label": "True" if a > b else "False", "task": "comparison"}))
+    
+    return ICMDataset(examples, {"task_type": task_type, "synthetic": True})

@@ -1,0 +1,12 @@
+torch>=1.13.0
+transformers>=4.30.0
+datasets>=2.12.0
+scikit-learn>=1.0.0
+numpy>=1.20.0
+tqdm>=4.65.0
+huggingface_hub>=0.16.0
+accelerate>=0.20.0
+openai>=1.0.0
+anthropic>=0.7.0
+pydantic>=2.0.0
+scipy>=1.9.0
