@@ -91,7 +91,7 @@ class ICMDataset:
 def load_icm_dataset(
     dataset_name: str,
     task_type: str = "auto",
-    split: str = "train",
+    split: str = "train", 
     config: Optional[str] = None,
     sample_size: Optional[int] = None,
     seed: int = 42
@@ -102,8 +102,8 @@ def load_icm_dataset(
     Args:
         dataset_name: Name of dataset or path to local file
         task_type: Type of task (classification, comparison, auto)
-        split: Dataset split to load
-        config: Dataset configuration
+        split: Dataset split to load (auto-detected for some datasets)
+        config: Dataset configuration (auto-detected for some datasets)
         sample_size: Number of examples to sample
         seed: Random seed
         
@@ -112,6 +112,13 @@ def load_icm_dataset(
     """
     logger = logging.getLogger(__name__)
     logger.info(f"Loading dataset: {dataset_name}")
+    
+    # Auto-detect split for known datasets if using default "train"
+    if split == "train":
+        default_split = _get_default_split(dataset_name, config)
+        if default_split != "train":
+            logger.info(f"Using default split '{default_split}' for {dataset_name}")
+            split = default_split
     
     # Load raw dataset
     if dataset_name.endswith('.json') or dataset_name.endswith('.jsonl'):
@@ -167,8 +174,48 @@ def _load_local_file(filepath: str) -> List[Dict[str, Any]]:
     return examples
 
 
+def _get_default_config(dataset_name: str) -> Optional[str]:
+    """Get default config for known datasets that require configuration."""
+    dataset_configs = {
+        "truthful_qa": "multiple_choice",
+        "super_glue": "boolq",  # Default to boolq for super_glue
+        "glue": "cola",  # Default to cola for glue
+    }
+    
+    for dataset_key, default_config in dataset_configs.items():
+        if dataset_key in dataset_name.lower():
+            return default_config
+    
+    return None
+
+
+def _get_default_split(dataset_name: str, config: Optional[str] = None) -> str:
+    """Get default split for known datasets."""
+    # Some datasets only have specific splits available
+    dataset_splits = {
+        "truthful_qa": "validation",  # TruthfulQA only has validation split
+    }
+    
+    for dataset_key, default_split in dataset_splits.items():
+        if dataset_key in dataset_name.lower():
+            return default_split
+    
+    return "train"  # Default fallback
+
+
 def _load_huggingface_dataset(dataset_name: str, split: str, config: Optional[str]) -> List[Dict[str, Any]]:
     """Load dataset from Hugging Face."""
+    logger = logging.getLogger(__name__)
+    
+    # Auto-detect config if not provided
+    if config is None:
+        config = _get_default_config(dataset_name)
+        if config:
+            logger.info(f"Auto-detected config '{config}' for {dataset_name}")
+    
+    # Auto-detect split if the requested split doesn't exist
+    original_split = split
+    
     try:
         if config:
             dataset = hf_load_dataset(dataset_name, config, split=split)
@@ -176,6 +223,46 @@ def _load_huggingface_dataset(dataset_name: str, split: str, config: Optional[st
             dataset = hf_load_dataset(dataset_name, split=split)
         return list(dataset)
     except Exception as e:
+        error_msg = str(e)
+        
+        # Check if this is a split error
+        if "Unknown split" in error_msg or "split" in error_msg.lower():
+            # Try with default split for this dataset
+            default_split = _get_default_split(dataset_name, config)
+            if default_split != original_split:
+                logger.info(f"Split '{original_split}' not found, trying default split '{default_split}' for {dataset_name}")
+                try:
+                    if config:
+                        dataset = hf_load_dataset(dataset_name, config, split=default_split)
+                    else:
+                        dataset = hf_load_dataset(dataset_name, split=default_split)
+                    return list(dataset)
+                except Exception as e2:
+                    logger.warning(f"Failed with default split {default_split}: {e2}")
+        
+        # Check if this is a missing config error
+        elif "Config name is missing" in error_msg or "available configs" in error_msg:
+            # Try to auto-detect appropriate config for known datasets
+            auto_config = _get_default_config(dataset_name)
+            if auto_config and auto_config != config:  # Only try if different from what we already tried
+                logger.info(f"Auto-detected config '{auto_config}' for {dataset_name}")
+                try:
+                    dataset = hf_load_dataset(dataset_name, auto_config, split=split)
+                    return list(dataset)
+                except Exception as e2:
+                    # Also try with default split
+                    default_split = _get_default_split(dataset_name, auto_config)
+                    if default_split != split:
+                        logger.info(f"Also trying default split '{default_split}'")
+                        try:
+                            dataset = hf_load_dataset(dataset_name, auto_config, split=default_split)
+                            return list(dataset)
+                        except Exception as e3:
+                            logger.warning(f"Failed with auto-config {auto_config} and split {default_split}: {e3}")
+            
+            # Provide helpful error message
+            raise ValueError(f"Dataset {dataset_name} requires a config parameter. {error_msg}")
+        
         raise ValueError(f"Failed to load dataset {dataset_name}: {e}")
 
 

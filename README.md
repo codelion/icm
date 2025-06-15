@@ -67,7 +67,11 @@ Where:
 
 ### TruthfulQA (Truthfulness)
 ```bash
+# Fully automatic - detects config='multiple_choice' and split='validation'
 icm run --model gpt2-medium --dataset truthful_qa --task-type truthfulqa
+
+# Or explicitly specify parameters
+icm run --model gpt2-medium --dataset truthful_qa --config multiple_choice --split validation --task-type truthfulqa
 ```
 
 ### GSM8K (Mathematical Reasoning)
@@ -337,6 +341,19 @@ icm run --model microsoft/DialoGPT-small --log-level DEBUG
 ```bash
 # Increase alpha or iterations
 icm run --model your-model --alpha 100.0 --max-iterations 2000
+```
+
+**Dataset Configuration Errors:**
+```bash
+# ICM now auto-detects both config and split for known datasets
+# TruthfulQA: automatically uses config='multiple_choice' and split='validation'
+# GSM8K: uses default split='train'
+
+# Your command should work automatically:
+icm run --model gpt2 --dataset truthful_qa --task-type truthfulqa
+
+# Or specify manually if needed:
+icm run --model gpt2 --dataset truthful_qa --config multiple_choice --split validation --task-type truthfulqa
 ```
 
 ### Debug Mode

@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="icm",
-    version="0.1.0",
+    version="0.0.1",
     description="Internal Coherence Maximization - Unsupervised Elicitation of Language Models",
     author="codelion",
     author_email="codelion@okyasoft.com",

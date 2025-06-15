@@ -57,12 +57,12 @@ def run_icm(args):
         else:
             logger.info(f"Loading dataset: {args.dataset}")
             dataset = load_icm_dataset(
-                dataset_name=args.dataset,
-                task_type=args.task_type,
-                split=args.split,
-                config=args.config,
-                sample_size=args.sample_size,
-                seed=args.seed
+            dataset_name=args.dataset,
+            task_type=args.task_type,
+            split=args.split,
+            config=args.config,
+            sample_size=args.sample_size,
+            seed=args.seed
             )
         
         logger.info(f"Loaded {len(dataset)} examples")
@@ -353,7 +353,7 @@ def parse_args():
                            choices=["auto", "classification", "comparison", "truthfulqa", "gsm8k", "alpaca"],
                            help="Task type")
     run_parser.add_argument("--split", type=str, default="train", help="Dataset split")
-    run_parser.add_argument("--config", type=str, default=None, help="Dataset configuration")
+    run_parser.add_argument("--config", type=str, default=None, help="Dataset configuration (e.g., 'multiple_choice' for truthful_qa)")
     run_parser.add_argument("--sample-size", type=int, default=None, help="Sample size from dataset")
     run_parser.add_argument("--max-examples", type=int, default=None, help="Maximum examples to process")
     run_parser.add_argument("--output-dir", type=str, default="icm_results", help="Output directory")
