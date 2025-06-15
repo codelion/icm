@@ -138,10 +138,13 @@ def run_icm(args):
             logger.info(f"  {label}: {count} ({percentage:.1f}%)")
     
     except Exception as e:
-        logger.error(f"Error running ICM: {e}")
+        error_msg = str(e) if str(e).strip() else "Unknown error occurred"
+        logger.error(f"Error running ICM: {error_msg}")
         if args.log_level == "DEBUG":
             import traceback
-            traceback.print_exc()
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+        else:
+            logger.error("Run with --log-level DEBUG for full traceback")
         sys.exit(1)
 
 

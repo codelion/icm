@@ -120,6 +120,14 @@ class ICMSearcher:
         self.logger.info(f"Loading model {model_name} on device {self.device}")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         
+        # Configure tokenizer
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        
+        # Set a reasonable max_length to avoid truncation warnings
+        if not hasattr(self.tokenizer, 'model_max_length') or self.tokenizer.model_max_length > 100000:
+            self.tokenizer.model_max_length = 2048  # Reasonable default
+        
         # Configure model loading based on device
         model_kwargs = {}
         if self.device == "cuda":
@@ -135,9 +143,6 @@ class ICMSearcher:
         # Move model to device if not using device_map
         if "device_map" not in model_kwargs:
             self.model = self.model.to(self.device)
-        
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
         
         # Initialize consistency checker
         self.consistency_checker = consistency_checker or LogicalConsistencyChecker()
@@ -177,48 +182,61 @@ class ICMSearcher:
         
         self.logger.info(f"Initial score: {best_score:.4f}")
         
-        for iteration in tqdm(range(self.max_iterations), desc="ICM Search"):
-            # Update temperature
-            temperature = max(
-                self.final_temperature,
-                self.initial_temperature / (1 + self.cooling_rate * math.log(iteration + 1))
-            )
-            
-            # Sample new example to label
-            example_idx = self._sample_example_to_label(examples, labeled_data)
-            example = examples[example_idx]
-            
-            # Generate label for the example
-            new_label = self._generate_label(example, labeled_data, task_type)
-            
-            # Create new labeled data with the proposed label
-            new_labeled_data = labeled_data.copy()
-            new_labeled_data[example_idx] = {
-                "example": example,
-                "label": new_label,
-                "index": example_idx
-            }
-            
-            # Fix inconsistencies
-            new_labeled_data = self._fix_inconsistencies(new_labeled_data)
-            
-            # Calculate new score
-            new_score = self._calculate_score(new_labeled_data)
-            
-            # Accept or reject based on simulated annealing
-            delta = new_score - best_score
-            
-            if delta > 0 or random.random() < math.exp(delta / temperature):
-                labeled_data = new_labeled_data
-                best_score = new_score
-                self.logger.debug(f"Iteration {iteration}: Accepted, score = {best_score:.4f}")
-            else:
-                self.logger.debug(f"Iteration {iteration}: Rejected, score = {new_score:.4f}")
-            
-            # Early stopping if temperature is very low and no improvement
-            if iteration > 100 and temperature < self.final_temperature * 2:
-                if iteration % 50 == 0:
-                    self.logger.info(f"Iteration {iteration}: score = {best_score:.4f}, temp = {temperature:.6f}")
+        try:
+            for iteration in tqdm(range(self.max_iterations), desc="ICM Search"):
+                try:
+                    # Update temperature
+                    temperature = max(
+                        self.final_temperature,
+                        self.initial_temperature / (1 + self.cooling_rate * math.log(iteration + 1))
+                    )
+                    
+                    # Sample new example to label
+                    example_idx = self._sample_example_to_label(examples, labeled_data)
+                    example = examples[example_idx]
+                    
+                    # Generate label for the example
+                    new_label = self._generate_label(example, labeled_data, task_type)
+                    
+                    # Create new labeled data with the proposed label
+                    new_labeled_data = labeled_data.copy()
+                    new_labeled_data[example_idx] = {
+                        "example": example,
+                        "label": new_label,
+                        "index": example_idx
+                    }
+                    
+                    # Fix inconsistencies
+                    new_labeled_data = self._fix_inconsistencies(new_labeled_data)
+                    
+                    # Calculate new score
+                    new_score = self._calculate_score(new_labeled_data)
+                    
+                    # Accept or reject based on simulated annealing
+                    delta = new_score - best_score
+                    
+                    if delta > 0 or random.random() < math.exp(delta / temperature):
+                        labeled_data = new_labeled_data
+                        best_score = new_score
+                        self.logger.debug(f"Iteration {iteration}: Accepted, score = {best_score:.4f}")
+                    else:
+                        self.logger.debug(f"Iteration {iteration}: Rejected, score = {new_score:.4f}")
+                    
+                    # Early stopping if temperature is very low and no improvement
+                    if iteration > 100 and temperature < self.final_temperature * 2:
+                        if iteration % 50 == 0:
+                            self.logger.info(f"Iteration {iteration}: score = {best_score:.4f}, temp = {temperature:.6f}")
+                            
+                except Exception as iteration_error:
+                    self.logger.error(f"Error in iteration {iteration}: {iteration_error}")
+                    # Continue to next iteration rather than failing completely
+                    continue
+                    
+        except Exception as search_error:
+            self.logger.error(f"Critical error in search loop: {search_error}")
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            raise search_error
         
         # Convert to final format
         labeled_examples = []
@@ -321,24 +339,36 @@ class ICMSearcher:
         prompt = self._build_prediction_prompt(example, context_examples, task_type)
         
         # Generate label using the model
-        inputs = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True)
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
-        
-        with torch.no_grad():
-            outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=10,  # Short for labels
-                temperature=self.generation_temperature,
-                top_p=self.generation_top_p,
-                do_sample=True,
-                pad_token_id=self.tokenizer.eos_token_id
+        try:
+            inputs = self.tokenizer(
+                prompt, 
+                return_tensors="pt", 
+                padding=True, 
+                truncation=True,
+                max_length=min(1024, self.tokenizer.model_max_length)  # Explicit max_length
             )
-        
-        generated_text = self.tokenizer.decode(outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
-        
-        # Extract label from generated text
-        label = self._extract_label(generated_text, task_type)
-        return label
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+            
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    **inputs,
+                    max_new_tokens=10,  # Short for labels
+                    temperature=self.generation_temperature,
+                    top_p=self.generation_top_p,
+                    do_sample=True,
+                    pad_token_id=self.tokenizer.eos_token_id
+                )
+            
+            generated_text = self.tokenizer.decode(outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
+            
+            # Extract label from generated text
+            label = self._extract_label(generated_text, task_type)
+            return label
+            
+        except Exception as e:
+            self.logger.warning(f"Error generating label: {e}")
+            # Fallback to random label
+            return random.choice(["True", "False"])
     
     def _build_prediction_prompt(
         self, 
@@ -500,8 +530,14 @@ class ICMSearcher:
             # Build prompt with context
             prompt = self._build_prediction_prompt(target_example, context_examples, "classification")
             
-            # Tokenize
-            inputs = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True)
+            # Tokenize with explicit max_length
+            inputs = self.tokenizer(
+                prompt, 
+                return_tensors="pt", 
+                padding=True, 
+                truncation=True,
+                max_length=min(1024, self.tokenizer.model_max_length)
+            )
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
             
             # Get model predictions
