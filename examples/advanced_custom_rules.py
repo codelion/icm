@@ -123,7 +123,7 @@ def main():
     logger.info("Initializing ICM searcher with custom rules...")
     
     searcher = ICMSearcher(
-        model_name="distilgpt2",
+        model_name="google/gemma-3-1b-it",
         alpha=40.0,
         initial_temperature=8.0,
         final_temperature=0.01,

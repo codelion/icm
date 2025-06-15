@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 def run_icm_pipeline(
-    model_name: str = "distilgpt2",
+    model_name: str = "google/gemma-3-1b-it",
     dataset_name: str = None,
     task_type: str = "classification",
     max_examples: int = 50,
@@ -259,7 +259,7 @@ def main():
     logger.info("Running Example 1: Synthetic Math Dataset")
     
     result1, files1, summary1 = run_icm_pipeline(
-        model_name="distilgpt2",
+        model_name="google/gemma-3-1b-it",
         dataset_name=None,  # Use synthetic
         task_type="classification",
         max_examples=30,
@@ -271,7 +271,7 @@ def main():
     logger.info("\nRunning Example 2: Synthetic Comparison Dataset")
     
     result2, files2, summary2 = run_icm_pipeline(
-        model_name="distilgpt2",
+        model_name="google/gemma-3-1b-it",
         dataset_name=None,
         task_type="comparison",
         max_examples=25,

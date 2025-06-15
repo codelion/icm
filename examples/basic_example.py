@@ -35,7 +35,7 @@ def main():
     logger.info("Initializing ICM searcher...")
     
     searcher = ICMSearcher(
-        model_name="distilgpt2",  # Small model for demo
+        model_name="google/gemma-3-1b-it",  # Updated model for experiments
         alpha=30.0,               # Lower alpha for faster convergence
         initial_temperature=5.0,   # Lower temperature
         final_temperature=0.01,

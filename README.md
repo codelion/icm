@@ -208,7 +208,7 @@ Create a `config.json` file:
 Set common parameters via environment variables:
 
 ```bash
-export ICM_MODEL="microsoft/DialoGPT-medium"
+export ICM_MODEL="google/gemma-3-1b-it"
 export ICM_DEVICE="cuda"
 export ICM_LOG_LEVEL="INFO"
 ```
@@ -225,7 +225,7 @@ dataset = load_icm_dataset("truthful_qa", task_type="truthfulqa")
 
 # Create searcher
 searcher = ICMSearcher(
-    model_name="gpt2-medium",
+    model_name="google/gemma-3-1b-it",
     alpha=50.0,
     max_iterations=1000
 )
@@ -256,7 +256,7 @@ checker = LogicalConsistencyChecker([MathConsistencyRule()])
 
 # Advanced searcher
 searcher = ICMSearcher(
-    model_name="gpt2",
+    model_name="google/gemma-3-1b-it",
     alpha=30.0,
     initial_temperature=20.0,
     consistency_checker=checker,
@@ -288,7 +288,7 @@ exporter.export_to_huggingface(
     result.labeled_examples,
     repo_id="username/my-icm-dataset",
     task_type="classification",
-    model_name="gpt2"
+    model_name="google/gemma-3-1b-it"
 )
 ```
 
@@ -298,17 +298,17 @@ exporter.export_to_huggingface(
 
 ```bash
 # Create synthetic math dataset
-icm run --model gpt2 --synthetic math --synthetic-size 500 --max-iterations 500
+icm run --model google/gemma-3-1b-it --synthetic math --synthetic-size 500 --max-iterations 500
 
 # Use real GSM8K dataset  
-icm run --model microsoft/DialoGPT-medium --dataset gsm8k --task-type gsm8k --max-examples 200
+icm run --model google/gemma-3-1b-it --dataset gsm8k --task-type gsm8k --max-examples 200
 ```
 
 ### Comparison Tasks
 
 ```bash
 # Generate preference dataset
-icm run --model meta-llama/Llama-2-7b-hf --dataset anthropic/hh-rlhf --task-type comparison --alpha 30.0
+icm run --model google/gemma-3-1b-it --dataset anthropic/hh-rlhf --task-type comparison --alpha 30.0
 ```
 
 ### Export and Use
@@ -328,15 +328,15 @@ icm export --input-path results.jsonl --output-path analysis.json --format analy
 **CUDA Out of Memory:**
 ```bash
 # Use smaller model, MPS (Apple Silicon), or CPU
-icm run --model distilgpt2 --device cpu
+icm run --model google/gemma-3-1b-it --device cpu
 # or on Apple Silicon:
-icm run --model distilgpt2 --device mps
+icm run --model google/gemma-3-1b-it --device mps
 ```
 
 **Model Loading Errors:**
 ```bash
 # Verify model name and check internet connection
-icm run --model microsoft/DialoGPT-small --log-level DEBUG
+icm run --model google/gemma-3-1b-it --log-level DEBUG
 ```
 
 **Poor Quality Results:**
@@ -352,17 +352,17 @@ icm run --model your-model --alpha 100.0 --max-iterations 2000
 # GSM8K: uses default split='train'
 
 # Your command should work automatically:
-icm run --model gpt2 --dataset truthful_qa --task-type truthfulqa
+icm run --model google/gemma-3-1b-it --dataset truthful_qa --task-type truthfulqa
 
 # Or specify manually if needed:
-icm run --model gpt2 --dataset truthful_qa --config multiple_choice --split validation --task-type truthfulqa
+icm run --model google/gemma-3-1b-it --dataset truthful_qa --config multiple_choice --split validation --task-type truthfulqa
 ```
 
 **Memory Usage Issues:**
 ```bash
 # ICM uses memory-efficient sampling to handle large datasets
 # If you still encounter memory issues, reduce the dataset size:
-icm run --model your-model --dataset large-dataset --max-examples 50
+icm run --model google/gemma-3-1b-it --dataset large-dataset --max-examples 50
 
 # Or use a smaller model:
 icm run --model distilgpt2 --dataset your-dataset --max-examples 100
@@ -373,7 +373,7 @@ icm run --model distilgpt2 --dataset your-dataset --max-examples 100
 Enable detailed logging:
 
 ```bash
-icm run --model gpt2 --dataset your-data --log-level DEBUG --log-file debug.log
+icm run --model google/gemma-3-1b-it --dataset your-data --log-level DEBUG --log-file debug.log
 ```
 
 ### Development Setup
