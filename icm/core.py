@@ -8,6 +8,7 @@ mutual predictability scoring and simulated annealing search.
 import logging
 import random
 import math
+import traceback
 from typing import Dict, List, Any, Optional, Tuple, Union
 from dataclasses import dataclass, field
 import torch
@@ -78,11 +79,16 @@ class ICMSearcher:
         """
         self.model_name = model_name
         
-        # Import device utilities
-        from .utils import get_device, get_device_info, setup_device_optimizations
-        
         # Smart device selection with priority: CUDA > MPS > CPU
-        self.device = get_device(device)
+        if device == "auto" or device is None:
+            if torch.cuda.is_available():
+                self.device = "cuda"
+            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                self.device = "mps"
+            else:
+                self.device = "cpu"
+        else:
+            self.device = device
         
         self.alpha = alpha
         self.initial_temperature = initial_temperature
@@ -101,9 +107,15 @@ class ICMSearcher:
         self.logger.setLevel(getattr(logging, log_level.upper()))
         
         # Log device selection
-        device_info = get_device_info()
+        available_devices = []
+        if torch.cuda.is_available():
+            available_devices.append("cuda")
+        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            available_devices.append("mps")
+        available_devices.append("cpu")
+        
         self.logger.info(f"Device selection: {self.device}")
-        self.logger.info(f"Available devices: {', '.join(device_info['available_devices'])}")
+        self.logger.info(f"Available devices: {', '.join(available_devices)}")
         
         # Set random seeds
         random.seed(seed)
@@ -113,8 +125,11 @@ class ICMSearcher:
             torch.cuda.manual_seed_all(seed)
         
         # Setup device optimizations
-        if setup_device_optimizations(self.device):
-            self.logger.info(f"Applied {self.device.upper()} optimizations")
+        if self.device == "cuda" and torch.cuda.is_available():
+            torch.backends.cudnn.benchmark = True
+            torch.backends.cudnn.deterministic = False
+            torch.cuda.empty_cache()
+            self.logger.info("Applied CUDA optimizations")
         
         # Load model and tokenizer
         self.logger.info(f"Loading model {model_name} on device {self.device}")
@@ -222,19 +237,23 @@ class ICMSearcher:
                     else:
                         self.logger.debug(f"Iteration {iteration}: Rejected, score = {new_score:.4f}")
                     
+                    # Progress logging
+                    if iteration > 0 and iteration % 100 == 0:
+                        self.logger.info(f"Iteration {iteration}: score = {best_score:.4f}, temp = {temperature:.6f}")
+                        
                     # Early stopping if temperature is very low and no improvement
                     if iteration > 100 and temperature < self.final_temperature * 2:
                         if iteration % 50 == 0:
-                            self.logger.info(f"Iteration {iteration}: score = {best_score:.4f}, temp = {temperature:.6f}")
+                            self.logger.debug(f"Low temperature check at iteration {iteration}")
                             
                 except Exception as iteration_error:
                     self.logger.error(f"Error in iteration {iteration}: {iteration_error}")
-                    # Continue to next iteration rather than failing completely
+                    self.logger.error(f"Detailed traceback: {traceback.format_exc()}")
+                    # Continue with next iteration instead of crashing
                     continue
                     
         except Exception as search_error:
             self.logger.error(f"Critical error in search loop: {search_error}")
-            import traceback
             self.logger.error(f"Traceback: {traceback.format_exc()}")
             raise search_error
         
@@ -308,17 +327,46 @@ class ICMSearcher:
             # If all examples are labeled, sample from existing ones to potentially relabel
             return random.choice(list(labeled_data.keys()))
         
-        # Prioritize examples that have consistency relationships with labeled examples
-        weighted_indices = []
+        # Calculate weights for each unlabeled example (memory-efficient approach)
+        weights = []
+        
         for idx in unlabeled_indices:
-            weight = 1.0
-            # Increase weight if this example has consistency relationships
+            base_weight = 1.0
+            relationship_count = 0
+            
+            # Count consistency relationships with labeled examples
             for labeled_idx in labeled_data:
                 if self.consistency_checker.has_relationship(examples[idx], examples[labeled_idx]):
-                    weight *= 100  # Much higher weight as per paper
-            weighted_indices.extend([idx] * int(weight))
+                    relationship_count += 1
+            
+            # Use additive weighting instead of multiplicative to prevent memory explosion
+            # Each relationship adds significant weight but doesn't multiply exponentially
+            if relationship_count > 0:
+                weight = base_weight + (relationship_count * 50.0)  # 50x boost per relationship
+            else:
+                weight = base_weight
+            
+            weights.append(weight)
         
-        return random.choice(weighted_indices if weighted_indices else unlabeled_indices)
+        # Memory-efficient weighted random sampling using cumulative distribution
+        if not weights:
+            return random.choice(unlabeled_indices)
+        
+        total_weight = sum(weights)
+        if total_weight == 0:
+            return random.choice(unlabeled_indices)
+        
+        # Generate random number and find corresponding index
+        r = random.random() * total_weight
+        cumulative_weight = 0.0
+        
+        for i, weight in enumerate(weights):
+            cumulative_weight += weight
+            if r <= cumulative_weight:
+                return unlabeled_indices[i]
+        
+        # Fallback (shouldn't reach here, but just in case)
+        return unlabeled_indices[-1]
     
     def _generate_label(
         self, 

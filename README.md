@@ -358,6 +358,16 @@ icm run --model gpt2 --dataset truthful_qa --task-type truthfulqa
 icm run --model gpt2 --dataset truthful_qa --config multiple_choice --split validation --task-type truthfulqa
 ```
 
+**Memory Usage Issues:**
+```bash
+# ICM uses memory-efficient sampling to handle large datasets
+# If you still encounter memory issues, reduce the dataset size:
+icm run --model your-model --dataset large-dataset --max-examples 50
+
+# Or use a smaller model:
+icm run --model distilgpt2 --dataset your-dataset --max-examples 100
+```
+
 ### Debug Mode
 
 Enable detailed logging:
