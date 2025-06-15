@@ -30,7 +30,7 @@ pip install -r requirements.txt
 Generate a labeled dataset using ICM:
 
 ```bash
-icm run --model microsoft/DialoGPT-medium --dataset truthful_qa --task-type truthfulqa --max-examples 100
+icm run --model google/gemma-3-1b-it --dataset truthful_qa --task-type truthfulqa --max-examples 100
 ```
 
 ### Export to Training Format
@@ -68,25 +68,25 @@ Where:
 ### TruthfulQA (Truthfulness)
 ```bash
 # Fully automatic - detects config='multiple_choice' and split='validation'
-icm run --model gpt2-medium --dataset truthful_qa --task-type truthfulqa
+icm run --model google/gemma-3-1b-it --dataset truthful_qa --task-type truthfulqa
 
 # Or explicitly specify parameters
-icm run --model gpt2-medium --dataset truthful_qa --config multiple_choice --split validation --task-type truthfulqa
+icm run --model google/gemma-3-1b-it --dataset truthful_qa --config multiple_choice --split validation --task-type truthfulqa
 ```
 
 ### GSM8K (Mathematical Reasoning)
 ```bash
-icm run --model microsoft/DialoGPT-medium --dataset gsm8k --task-type gsm8k
+icm run --model google/gemma-3-1b-it --dataset gsm8k --task-type gsm8k
 ```
 
 ### Alpaca (Helpfulness & Harmlessness)
 ```bash
-icm run --model meta-llama/Llama-2-7b-hf --dataset alpaca --task-type alpaca
+icm run --model google/gemma-3-1b-it --dataset alpaca --task-type alpaca
 ```
 
 ### Custom Datasets
 ```bash
-icm run --model your-model --dataset path/to/dataset.jsonl --task-type classification
+icm run --model google/gemma-3-1b-it --dataset path/to/dataset.jsonl --task-type classification
 ```
 
 ## Command Reference
@@ -96,7 +96,7 @@ icm run --model your-model --dataset path/to/dataset.jsonl --task-type classific
 Run ICM on a dataset to generate labeled examples.
 
 **Required Arguments:**
-- `--model`: Model name or path (e.g., `gpt2`, `microsoft/DialoGPT-medium`)
+- `--model`: Model name or path (e.g., `google/gemma-3-1b-it`)
 
 **Dataset Arguments:**
 - `--dataset`: Dataset name or path
