@@ -24,10 +24,57 @@ def set_random_seeds(seed: int):
 
 
 def get_device(device: Optional[str] = None) -> str:
-    """Get the appropriate device for computation."""
-    if device == "auto" or device is None:
-        return "cuda" if torch.cuda.is_available() else "cpu"
-    return device
+    """Get the appropriate device for computation with smart prioritization.
+    
+    Priority order:
+    1. CUDA (if available)
+    2. MPS (Apple Silicon GPU, if available) 
+    3. CPU (fallback)
+    
+    Args:
+        device: Explicit device override ("cuda", "mps", "cpu", "auto", or None)
+        
+    Returns:
+        Device string ("cuda", "mps", or "cpu")
+    """
+    if device and device != "auto":
+        return device
+    
+    # Priority 1: CUDA (NVIDIA GPUs)
+    if torch.cuda.is_available():
+        return "cuda"
+    
+    # Priority 2: MPS (Apple Silicon GPUs)
+    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        return "mps"
+    
+    # Priority 3: CPU (fallback)
+    return "cpu"
+
+
+def get_device_info() -> Dict[str, Any]:
+    """Get detailed information about available devices."""
+    info = {
+        "available_devices": [],
+        "recommended_device": get_device(),
+        "cuda_available": torch.cuda.is_available(),
+        "mps_available": hasattr(torch.backends, 'mps') and torch.backends.mps.is_available(),
+    }
+    
+    # Add CUDA info
+    if torch.cuda.is_available():
+        info["available_devices"].append("cuda")
+        info["cuda_device_count"] = torch.cuda.device_count()
+        info["cuda_device_name"] = torch.cuda.get_device_name(0)
+    
+    # Add MPS info
+    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        info["available_devices"].append("mps")
+    
+    # CPU is always available
+    info["available_devices"].append("cpu")
+    
+    return info
 
 
 def ensure_directory(path: str) -> str:
@@ -215,10 +262,17 @@ def create_experiment_id(
     return f"{model_clean}_{dataset_clean}_{task_clean}_{timestamp}"
 
 
-def setup_cuda_if_available():
-    """Setup CUDA optimizations if available."""
-    if torch.cuda.is_available():
-        # Enable optimizations
+def setup_device_optimizations(device: str) -> bool:
+    """Setup device-specific optimizations.
+    
+    Args:
+        device: Device string ("cuda", "mps", or "cpu")
+        
+    Returns:
+        True if optimizations were applied, False otherwise
+    """
+    if device == "cuda" and torch.cuda.is_available():
+        # Enable CUDA optimizations
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.deterministic = False
         
@@ -226,6 +280,12 @@ def setup_cuda_if_available():
         torch.cuda.empty_cache()
         
         return True
+    
+    elif device == "mps" and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        # MPS-specific optimizations can be added here in the future
+        # Currently, PyTorch handles MPS optimizations automatically
+        return True
+    
     return False
 
 
@@ -239,6 +299,11 @@ def log_system_info(logger: logging.Logger):
     logger.info(f"  Python: {sys.version}")
     logger.info(f"  PyTorch: {torch.__version__}")
     
+    # Get device info
+    device_info = get_device_info()
+    logger.info(f"  Recommended device: {device_info['recommended_device']}")
+    logger.info(f"  Available devices: {', '.join(device_info['available_devices'])}")
+    
     if torch.cuda.is_available():
         logger.info(f"  CUDA: {torch.version.cuda}")
         logger.info(f"  GPU: {torch.cuda.get_device_name()}")
@@ -247,6 +312,11 @@ def log_system_info(logger: logging.Logger):
             logger.info(f"  GPU Memory: {gpu_mem['total_mb']:.0f} MB total")
     else:
         logger.info("  CUDA: Not available")
+    
+    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        logger.info("  MPS (Apple Silicon): Available")
+    else:
+        logger.info("  MPS (Apple Silicon): Not available")
     
     cpu_mem = get_memory_usage()
     logger.info(f"  RAM Usage: {cpu_mem['rss_mb']:.0f} MB ({cpu_mem['percent']:.1f}%)")

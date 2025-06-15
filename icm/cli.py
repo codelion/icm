@@ -377,7 +377,8 @@ def parse_args():
     run_parser.add_argument("--generation-max-tokens", type=int, default=512, help="Max generation tokens")
     
     # System parameters
-    run_parser.add_argument("--device", type=str, default=None, help="Device (cuda/cpu/auto)")
+    run_parser.add_argument("--device", type=str, default=None, 
+                           help="Device (auto/cuda/mps/cpu). Auto-detects: CUDA > MPS > CPU")
     run_parser.add_argument("--seed", type=int, default=42, help="Random seed")
     run_parser.add_argument("--log-level", type=str, default="INFO", 
                            choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Log level")

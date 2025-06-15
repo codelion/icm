@@ -61,7 +61,7 @@ class ICMSearcher:
         
         Args:
             model_name: Name or path of the model to use
-            device: Device to run on (cuda/cpu/auto)
+            device: Device to run on ("cuda", "mps", "cpu", "auto", or None for auto-detection)
             alpha: Weight for mutual predictability vs consistency
             initial_temperature: Starting temperature for simulated annealing
             final_temperature: Ending temperature for simulated annealing
@@ -77,7 +77,13 @@ class ICMSearcher:
             log_level: Logging level
         """
         self.model_name = model_name
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # Import device utilities
+        from .utils import get_device, get_device_info, setup_device_optimizations
+        
+        # Smart device selection with priority: CUDA > MPS > CPU
+        self.device = get_device(device)
+        
         self.alpha = alpha
         self.initial_temperature = initial_temperature
         self.final_temperature = final_temperature
@@ -94,6 +100,11 @@ class ICMSearcher:
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(getattr(logging, log_level.upper()))
         
+        # Log device selection
+        device_info = get_device_info()
+        self.logger.info(f"Device selection: {self.device}")
+        self.logger.info(f"Available devices: {', '.join(device_info['available_devices'])}")
+        
         # Set random seeds
         random.seed(seed)
         np.random.seed(seed)
@@ -101,14 +112,29 @@ class ICMSearcher:
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(seed)
         
+        # Setup device optimizations
+        if setup_device_optimizations(self.device):
+            self.logger.info(f"Applied {self.device.upper()} optimizations")
+        
         # Load model and tokenizer
         self.logger.info(f"Loading model {model_name} on device {self.device}")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-            device_map="auto" if self.device == "cuda" else None
-        )
+        
+        # Configure model loading based on device
+        model_kwargs = {}
+        if self.device == "cuda":
+            model_kwargs["torch_dtype"] = torch.float16
+            model_kwargs["device_map"] = "auto"
+        elif self.device == "mps":
+            model_kwargs["torch_dtype"] = torch.float16  # MPS supports float16
+        else:  # CPU
+            model_kwargs["torch_dtype"] = torch.float32
+        
+        self.model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
+        
+        # Move model to device if not using device_map
+        if "device_map" not in model_kwargs:
+            self.model = self.model.to(self.device)
         
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token

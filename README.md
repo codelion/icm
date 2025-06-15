@@ -327,8 +327,10 @@ icm export --input-path results.jsonl --output-path analysis.json --format analy
 
 **CUDA Out of Memory:**
 ```bash
-# Use smaller model or reduce batch size
-icm run --model gpt2 --device cpu
+# Use smaller model, MPS (Apple Silicon), or CPU
+icm run --model distilgpt2 --device cpu
+# or on Apple Silicon:
+icm run --model distilgpt2 --device mps
 ```
 
 **Model Loading Errors:**
