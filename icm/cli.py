@@ -108,8 +108,12 @@ def run_icm(args):
         if args.output_name:
             output_name = args.output_name
         else:
-            # Generate name from dataset and model
-            dataset_name = args.dataset.split('/')[-1] if '/' in args.dataset else args.dataset
+            # Generate name from dataset/synthetic and model
+            if args.synthetic:
+                dataset_name = f"synthetic_{args.synthetic}"
+            else:
+                dataset_name = args.dataset.split('/')[-1] if '/' in args.dataset else args.dataset
+            
             model_name = args.model.split('/')[-1] if '/' in args.model else args.model
             output_name = f"{dataset_name}_{model_name}_icm"
         
