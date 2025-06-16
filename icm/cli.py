@@ -113,17 +113,13 @@ def run_icm(args):
             model_name = args.model.split('/')[-1] if '/' in args.model else args.model
             output_name = f"{dataset_name}_{model_name}_icm"
         
-        # Save full result with metadata
-        result_path = storage.save_result(result, output_name, include_metadata=True)
-        
-        # Save just the labeled dataset
+        # Save clean labeled dataset (no metadata needed)
         dataset_path = storage.save_labeled_dataset(
-            result.labeled_examples, 
-            f"{output_name}_dataset",
+            result.labeled_examples,
+            output_name,
             format=args.output_format
         )
         
-        logger.info(f"Results saved to: {result_path}")
         logger.info(f"Dataset saved to: {dataset_path}")
         
         # Print summary statistics
