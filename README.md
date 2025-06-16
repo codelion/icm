@@ -487,6 +487,7 @@ If you use ICM in your research, please cite:
 
 ## Related Work
 
+- **Eliciting Fine-Tuned Transformer Capabilities**: [Paper](https://arxiv.org/abs/2506.08060)
 - **Weak-to-Strong Generalization**: [Paper](https://arxiv.org/abs/2312.09390)
 - **Constitutional AI**: [Paper](https://arxiv.org/abs/2212.08073) 
 - **Discovering Latent Knowledge**: [Paper](https://arxiv.org/abs/2212.03827)
