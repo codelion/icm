@@ -89,6 +89,83 @@ icm run --model google/gemma-3-1b-it --dataset alpaca --task-type alpaca
 icm run --model google/gemma-3-1b-it --dataset path/to/dataset.jsonl --task-type classification
 ```
 
+## Synthetic Datasets
+
+ICM can generate synthetic datasets for testing and experimentation. These are perfect for:
+- **Testing ICM**: Validate the algorithm on simple, verifiable tasks
+- **Quick experiments**: Generate datasets instantly without external dependencies
+- **Educational purposes**: Understand how ICM works with clear logical relationships
+
+### Available Synthetic Types
+
+#### **Math Dataset** (`--synthetic math`)
+Generates **simple addition problems** with both correct and incorrect solutions:
+
+**Example Output:**
+```
+Question: What is 42 + 17?
+Claim: 42 + 17 = 59
+I think this Claim is [True/False]
+```
+
+**How it works:**
+- Random numbers between 1-100
+- Creates correct solutions (True labels)
+- Creates incorrect solutions with random errors (False labels)  
+- **Double the requested size**: `--synthetic-size 500` creates 1000 examples (500 correct + 500 incorrect)
+- **Perfectly balanced**: 50% True, 50% False labels
+
+#### **Comparison Dataset** (`--synthetic comparison`)
+Generates **number comparison tasks**:
+
+**Example Output:**
+```
+Query: Which number is larger?
+Response A: 73
+Response B: 45
+Claim: Response A is larger than Response B
+I think this Claim is [True/False]
+```
+
+**How it works:**
+- Random pairs of numbers
+- True/False based on actual comparison
+- Single example per iteration (not doubled)
+
+### Usage Examples
+
+```bash
+# Math problems - creates 1000 examples (500 pairs)
+icm run --model google/gemma-3-1b-it --synthetic math --synthetic-size 500
+
+# Number comparisons - creates 300 examples  
+icm run --model google/gemma-3-1b-it --synthetic comparison --synthetic-size 300
+
+# Quick test with defaults (100 examples)
+icm run --model google/gemma-3-1b-it --synthetic math
+```
+
+### Why Use Synthetic Datasets?
+
+1. **Instant generation**: No need to download or configure external datasets
+2. **Verifiable ground truth**: Clear logical relationships for validation
+3. **Reproducible**: Consistent results with same seed
+4. **Perfect for testing**: Simple tasks ideal for algorithm validation
+5. **No dependencies**: Works offline without internet connection
+
+### Dataset Format
+
+All synthetic examples follow the standard ICM format:
+```json
+{
+  "input": "Question: What is 42 + 17?\nClaim: 42 + 17 = 59\nI think this Claim is [True/False]",
+  "metadata": {
+    "gold_label": "True",
+    "task": "math"
+  }
+}
+```
+
 ## Command Reference
 
 ### `icm run`
@@ -103,6 +180,10 @@ Run ICM on a dataset to generate labeled examples.
 - `--task-type`: Task type (`auto`, `classification`, `comparison`, `truthfulqa`, `gsm8k`, `alpaca`)
 - `--split`: Dataset split (default: `train`)
 - `--max-examples`: Maximum examples to process
+
+**Synthetic Dataset Options:**
+- `--synthetic`: Create synthetic dataset (`math`, `comparison`)
+- `--synthetic-size`: Number of synthetic examples to generate (default: 100)
 
 **ICM Algorithm Parameters:**
 - `--alpha`: Weight for mutual predictability vs consistency (default: 50.0)
