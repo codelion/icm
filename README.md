@@ -76,7 +76,11 @@ icm run --model google/gemma-3-1b-it --dataset truthful_qa --config multiple_cho
 
 ### GSM8K (Mathematical Reasoning)
 ```bash
+# Fully automatic - detects config='main'
 icm run --model google/gemma-3-1b-it --dataset gsm8k --task-type gsm8k
+
+# Or explicitly specify parameters
+icm run --model google/gemma-3-1b-it --dataset gsm8k --config main --task-type gsm8k
 ```
 
 ### Alpaca (Helpfulness & Harmlessness)
@@ -430,13 +434,15 @@ icm run --model your-model --alpha 100.0 --max-iterations 2000
 ```bash
 # ICM now auto-detects both config and split for known datasets
 # TruthfulQA: automatically uses config='multiple_choice' and split='validation'
-# GSM8K: uses default split='train'
+# GSM8K: automatically uses config='main' and split='train'
 
-# Your command should work automatically:
+# Your commands should work automatically:
 icm run --model google/gemma-3-1b-it --dataset truthful_qa --task-type truthfulqa
+icm run --model google/gemma-3-1b-it --dataset gsm8k --task-type gsm8k
 
 # Or specify manually if needed:
 icm run --model google/gemma-3-1b-it --dataset truthful_qa --config multiple_choice --split validation --task-type truthfulqa
+icm run --model google/gemma-3-1b-it --dataset gsm8k --config main --task-type gsm8k
 ```
 
 **Memory Usage Issues:**
