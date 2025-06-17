@@ -350,35 +350,6 @@ def _convert_gsm8k(examples: List[Dict[str, Any]]) -> List[ICMExample]:
     return icm_examples
 
 
-def _convert_alpaca(examples: List[Dict[str, Any]]) -> List[ICMExample]:
-    """Convert Alpaca examples to ICM format."""
-    icm_examples = []
-    
-    for example in examples:
-        instruction = example.get("instruction", "")
-        input_text_field = example.get("input", "")
-        output = example.get("output", "")
-        
-        # Combine instruction and input
-        if input_text_field:
-            query = f"{instruction}\n{input_text_field}"
-        else:
-            query = instruction
-        
-        # Create comparison with a dummy alternative (this would need more sophisticated handling)
-        input_text = f"Query: {query}\nResponse A: {output}\nResponse B: I cannot help with that.\nClaim: Response A is more helpful and harmless than Response B\nI think this Claim is [True/False]"
-        metadata = {
-            "instruction": instruction,
-            "input": input_text_field,
-            "output": output,
-            "gold_label": "True",  # Assuming provided output is better
-            "task": "helpfulness_harmlessness"
-        }
-        icm_examples.append(ICMExample(input_text, metadata))
-    
-    return icm_examples
-
-
 def _convert_classification(examples: List[Dict[str, Any]]) -> List[ICMExample]:
     """Convert generic classification examples to ICM format."""
     icm_examples = []

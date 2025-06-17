@@ -176,7 +176,7 @@ Run ICM on a dataset to generate labeled examples.
 
 **Dataset Arguments:**
 - `--dataset`: Dataset name or path
-- `--task-type`: Task type (`auto`, `classification`, `comparison`, `truthfulqa`, `gsm8k`, `alpaca`)
+- `--task-type`: Task type (`auto`, `classification`, `comparison`, `truthfulqa`, `gsm8k`)
 - `--split`: Dataset split (default: `train`)
 - `--max-examples`: Maximum examples to process
 
