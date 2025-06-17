@@ -353,7 +353,7 @@ def parse_args():
     run_parser.add_argument("--model", type=str, required=True, help="Model name or path")
     run_parser.add_argument("--dataset", type=str, help="Dataset name or path")
     run_parser.add_argument("--task-type", type=str, default="auto", 
-                           choices=["auto", "classification", "comparison", "truthfulqa", "gsm8k", "alpaca"],
+                           choices=["auto", "classification", "comparison", "truthfulqa", "gsm8k"],
                            help="Task type")
     run_parser.add_argument("--split", type=str, default="train", help="Dataset split")
     run_parser.add_argument("--config", type=str, default=None, help="Dataset configuration (e.g., 'multiple_choice' for truthful_qa)")

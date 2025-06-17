@@ -2,7 +2,7 @@
 Dataset handling for ICM.
 
 This module provides dataset loading and formatting for ICM tasks,
-supporting various formats like TruthfulQA, GSM8K, and Alpaca.
+supporting various formats like TruthfulQA and GSM8K.
 """
 
 import json
@@ -135,8 +135,6 @@ def load_icm_dataset(
         examples = _convert_truthfulqa(raw_examples)
     elif task_type == "gsm8k":
         examples = _convert_gsm8k(raw_examples)
-    elif task_type == "alpaca":
-        examples = _convert_alpaca(raw_examples)
     elif task_type == "classification":
         examples = _convert_classification(raw_examples)
     elif task_type == "comparison":
@@ -178,7 +176,6 @@ def _get_default_config(dataset_name: str) -> Optional[str]:
     """Get default config for known datasets that require configuration."""
     dataset_configs = {
         "truthful_qa": "multiple_choice",
-        "gsm8k": "main",  # GSM8K has configs: ['main', 'socratic']
         "super_glue": "boolq",  # Default to boolq for super_glue
         "glue": "cola",  # Default to cola for glue
     }
@@ -275,8 +272,6 @@ def _detect_task_type(examples: List[Dict[str, Any]], dataset_name: str) -> str:
         return "truthfulqa"
     elif "gsm8k" in dataset_name_lower:
         return "gsm8k"
-    elif "alpaca" in dataset_name_lower:
-        return "alpaca"
     
     # Look at example structure
     if examples:
