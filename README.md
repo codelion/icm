@@ -83,11 +83,6 @@ icm run --model google/gemma-3-1b-it --dataset gsm8k --task-type gsm8k
 icm run --model google/gemma-3-1b-it --dataset gsm8k --config main --task-type gsm8k
 ```
 
-### Alpaca (Helpfulness & Harmlessness)
-```bash
-icm run --model google/gemma-3-1b-it --dataset alpaca --task-type alpaca
-```
-
 ### Custom Datasets
 ```bash
 icm run --model google/gemma-3-1b-it --dataset path/to/dataset.jsonl --task-type classification
