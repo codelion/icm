@@ -176,6 +176,7 @@ def _get_default_config(dataset_name: str) -> Optional[str]:
     """Get default config for known datasets that require configuration."""
     dataset_configs = {
         "truthful_qa": "multiple_choice",
+        "gsm8k": "main",  # Default to main config for gsm8k
         "super_glue": "boolq",  # Default to boolq for super_glue
         "glue": "cola",  # Default to cola for glue
     }
