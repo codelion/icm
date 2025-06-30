@@ -45,6 +45,12 @@ icm export --input-path icm_results/truthfulqa_dialoGPT_20240115_143022.jsonl --
 icm push --input-path truthfulqa_dpo.jsonl --hf-repo-id your-username/icm-truthfulqa-dataset
 ```
 
+## Try Now
+
+| Use Case | Dataset | Link |
+|----------|----------|-------|
+| Fine-tuning the model | sft dataset | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1LfNDIvZs98hFBZzEc4ukYO1ZXLpM7WXS?usp=sharing) |
+
 ## Algorithm Overview
 
 ICM uses two key components:
