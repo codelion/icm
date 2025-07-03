@@ -103,15 +103,28 @@ class MathConsistencyRule(ConsistencyRule):
     
     def _extract_final_answer(self, text: str) -> Optional[str]:
         """Extract the final numerical answer from text."""
-        # Look for patterns like "The answer is X" or "Therefore, X"
-        patterns = [
+        # Look for mathematical equations in the claim
+        equation_patterns = [
+            r"(\d+)\s*\+\s*(\d+)\s*=\s*(\d+)",  # Addition
+            r"(\d+)\s*-\s*(\d+)\s*=\s*(\d+)",  # Subtraction  
+            r"(\d+)\s*\*\s*(\d+)\s*=\s*(\d+)",  # Multiplication
+            r"(\d+)\s*/\s*(\d+)\s*=\s*(\d+)",  # Division
+        ]
+        
+        for pattern in equation_patterns:
+            match = re.search(pattern, text)
+            if match:
+                return match.group(3)  # Return the claimed result
+        
+        # Fallback to original patterns
+        answer_patterns = [
             r"The answer is ([0-9]+(?:\.[0-9]+)?)",
             r"Therefore,?\s*([0-9]+(?:\.[0-9]+)?)",
             r"= ([0-9]+(?:\.[0-9]+)?)\s*$",
             r"answer:\s*([0-9]+(?:\.[0-9]+)?)",
         ]
         
-        for pattern in patterns:
+        for pattern in answer_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 return match.group(1)

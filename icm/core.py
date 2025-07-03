@@ -424,18 +424,34 @@ class ICMSearcher:
         context_examples: List[Dict[str, Any]], 
         task_type: str
     ) -> str:
-        """Build prompt for label prediction."""
+        """Build prompt for label prediction with mathematical reasoning."""
         prompt_parts = []
+        
+        # Add instruction for mathematical reasoning
+        if "math" in str(task_type).lower() or any("+" in ctx['input'] or "=" in ctx['input'] for ctx in context_examples):
+            prompt_parts.append("Evaluate whether each mathematical claim is correct or incorrect.")
+            prompt_parts.append("")
         
         # Add context examples
         for ctx in context_examples:
-            prompt_parts.append(f"Input: {ctx['input']}")
-            prompt_parts.append(f"Label: {ctx['label']}")
+            # Extract and format for better mathematical understanding
+            input_text = ctx['input']
+            if "Claim:" in input_text and "=" in input_text:
+                # For math problems, emphasize the mathematical evaluation
+                prompt_parts.append(f"Problem: {input_text}")
+                prompt_parts.append(f"Evaluation: The claim is {ctx['label']}")
+            else:
+                prompt_parts.append(f"Input: {input_text}")
+                prompt_parts.append(f"Label: {ctx['label']}")
             prompt_parts.append("")
         
-        # Add target example
-        prompt_parts.append(f"Input: {example.input_text}")
-        prompt_parts.append("Label:")
+        # Add target example with mathematical framing
+        if "Claim:" in example.input_text and "=" in example.input_text:
+            prompt_parts.append(f"Problem: {example.input_text}")
+            prompt_parts.append("Evaluation: The claim is")
+        else:
+            prompt_parts.append(f"Input: {example.input_text}")
+            prompt_parts.append("Label:")
         
         return "\n".join(prompt_parts)
     
@@ -593,12 +609,30 @@ class ICMSearcher:
                 outputs = self.model(**inputs)
                 logits = outputs.logits[0, -1, :]  # Last token logits
             
-            # Get probabilities for True/False tokens
-            true_token_id = self.tokenizer.encode("True", add_special_tokens=False)[0]
-            false_token_id = self.tokenizer.encode("False", add_special_tokens=False)[0]
+            # Get probabilities for True/False tokens with multiple variants
+            true_tokens = []
+            false_tokens = []
             
-            true_logit = logits[true_token_id].item()
-            false_logit = logits[false_token_id].item()
+            # Try multiple token variants
+            for variant in ["True", "true", "TRUE", "correct", "yes"]:
+                try:
+                    token_ids = self.tokenizer.encode(variant, add_special_tokens=False)
+                    if token_ids:
+                        true_tokens.append(token_ids[0])
+                except:
+                    pass
+            
+            for variant in ["False", "false", "FALSE", "incorrect", "no"]:
+                try:
+                    token_ids = self.tokenizer.encode(variant, add_special_tokens=False)
+                    if token_ids:
+                        false_tokens.append(token_ids[0])
+                except:
+                    pass
+            
+            # Get maximum logit for each category
+            true_logit = max([logits[tid].item() for tid in true_tokens]) if true_tokens else -float('inf')
+            false_logit = max([logits[tid].item() for tid in false_tokens]) if false_tokens else -float('inf')
             
             # Apply softmax
             exp_true = math.exp(true_logit)
