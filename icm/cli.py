@@ -195,8 +195,6 @@ def export_results(args):
             output_path = exporter.export_to_json(labeled_examples, args.output_path, args.include_stats)
         elif args.format == "dpo":
             output_path = exporter.export_to_dpo_format(labeled_examples, args.output_path, args.create_pairs)
-        elif args.format == "sft":
-            output_path = exporter.export_to_sft_format(labeled_examples, args.output_path)
         elif args.format == "csv":
             output_path = exporter.export_to_csv(labeled_examples, args.output_path)
         elif args.format == "analysis":
@@ -397,7 +395,7 @@ def parse_args():
     export_parser.add_argument("--input-path", type=str, required=True, help="Input file path")
     export_parser.add_argument("--output-path", type=str, required=True, help="Output file path")
     export_parser.add_argument("--format", type=str, required=True, 
-                              choices=["json", "dpo", "sft", "csv", "analysis"], help="Export format")
+                              choices=["json", "dpo", "csv", "analysis"], help="Export format")
     export_parser.add_argument("--include-stats", action="store_true", help="Include statistics")
     export_parser.add_argument("--include-examples", action="store_true", help="Include example details")
     export_parser.add_argument("--create-pairs", action="store_true", help="Create DPO pairs")

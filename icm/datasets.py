@@ -331,24 +331,78 @@ def _convert_truthfulqa(examples: List[Dict[str, Any]]) -> List[ICMExample]:
 
 
 def _convert_gsm8k(examples: List[Dict[str, Any]]) -> List[ICMExample]:
-    """Convert GSM8K examples to ICM format."""
+    """Convert GSM8K examples to ICM format with diverse solution generation."""
     icm_examples = []
     
     for example in examples:
         question = example.get("question", "")
-        answer = example.get("answer", "")
+        original_answer = example.get("answer", "")
         
-        # Create verification task
-        input_text = f"Question: {question}\nClaim: {answer}\nI think this Claim is [True/False]"
-        metadata = {
-            "question": question,
-            "solution": answer,
-            "gold_label": "True",  # Assuming provided answers are correct
-            "task": "mathematical_correctness"
-        }
-        icm_examples.append(ICMExample(input_text, metadata))
+        # Generate diverse solutions for each question
+        solutions = _generate_diverse_solutions(question, original_answer)
+        
+        for solution in solutions:
+            # Create verification task - NO pre-set gold_label
+            input_text = f"Question: {question}\nClaim: {solution}\nI think this Claim is [True/False]"
+            metadata = {
+                "question": question,
+                "solution": solution,
+                "original_solution": original_answer,  # Keep original for reference
+                "task": "mathematical_correctness"
+                # No gold_label - ICM will determine this
+            }
+            icm_examples.append(ICMExample(input_text, metadata))
     
     return icm_examples
+
+
+def _generate_diverse_solutions(question: str, original_answer: str, num_solutions: int = 4) -> List[str]:
+    """
+    Generate diverse solutions for a math question.
+    Returns a mix of correct and incorrect solutions as the paper describes.
+    """
+    solutions = []
+    
+    # Include the original correct solution
+    solutions.append(original_answer)
+    
+    # Generate variations with different approaches/errors
+    # Solution 2: Simplified/shortened version
+    lines = original_answer.split('\n')
+    if len(lines) > 2:
+        # Take first and last line for a shortened version
+        simplified = f"{lines[0]}\n{lines[-1]}"
+        solutions.append(simplified)
+    
+    # Solution 3: With a calculation error
+    import re
+    error_solution = original_answer
+    # Find calculations and introduce errors
+    calc_pattern = r'<<([^>]+)>>'
+    calculations = re.findall(calc_pattern, original_answer)
+    if calculations:
+        # Modify the first calculation to introduce an error
+        original_calc = calculations[0]
+        if '=' in original_calc:
+            parts = original_calc.split('=')
+            if len(parts) == 2 and parts[1].strip().isdigit():
+                wrong_result = str(int(parts[1].strip()) + 1)  # Off by 1 error
+                wrong_calc = f"{parts[0]}={wrong_result}"
+                error_solution = error_solution.replace(f"<<{original_calc}>>", f"<<{wrong_calc}>>")
+                # Also update the final answer
+                final_answer_pattern = r'#### (\d+)'
+                match = re.search(final_answer_pattern, error_solution)
+                if match:
+                    old_final = match.group(1)
+                    new_final = str(int(old_final) + 1)
+                    error_solution = error_solution.replace(f"#### {old_final}", f"#### {new_final}")
+        solutions.append(error_solution)
+    
+    # Solution 4: Different approach with wrong logic
+    wrong_approach = f"I'll solve this step by step.\n{question.split('?')[0]}?\nThe answer is clearly 42.\n#### 42"
+    solutions.append(wrong_approach)
+    
+    return solutions[:num_solutions]
 
 
 def _convert_classification(examples: List[Dict[str, Any]]) -> List[ICMExample]:

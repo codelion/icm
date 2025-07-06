@@ -43,7 +43,7 @@ def run_icm_pipeline(
     """
     
     if export_formats is None:
-        export_formats = ["json", "dpo", "sft"]
+        export_formats = ["json", "dpo"]
     
     # Create experiment ID
     experiment_id = create_experiment_id(
@@ -142,12 +142,6 @@ def run_icm_pipeline(
                 create_pairs=True
             )
         
-        elif format_name == "sft":
-            output_path += ".jsonl"
-            file_path = exporter.export_to_sft_format(
-                result.labeled_examples,
-                output_path
-            )
         
         elif format_name == "csv":
             output_path += ".csv"
@@ -263,7 +257,7 @@ def main():
         dataset_name=None,  # Use synthetic
         task_type="classification",
         max_examples=30,
-        export_formats=["json", "dpo", "sft", "analysis"],
+        export_formats=["json", "dpo", "analysis"],
         push_to_hf=False
     )
     

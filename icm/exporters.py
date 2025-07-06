@@ -162,6 +162,9 @@ class ICMExporter:
     ) -> str:
         """
         Export to DPO training format.
+        Creates preferred/rejected pairs from ICM labels:
+        - True solutions (ICM labeled) = Preferred responses
+        - False solutions (ICM labeled) = Rejected responses
         
         Args:
             labeled_examples: List of labeled examples
@@ -174,44 +177,60 @@ class ICMExporter:
         dpo_examples = []
         
         if create_pairs:
-            # Group by input and create pairs
-            input_groups = {}
+            # Group by question to create pairs from same question
+            question_groups = {}
             for ex in labeled_examples:
-                input_text = ex["input"]
-                if input_text not in input_groups:
-                    input_groups[input_text] = []
-                input_groups[input_text].append(ex)
+                # Extract question from metadata or input
+                question = ex.get("metadata", {}).get("question", "")
+                if not question:
+                    # Fallback: extract question from input text
+                    input_text = ex["input"]
+                    if "Question:" in input_text:
+                        question = input_text.split("Question:")[1].split("\n")[0].strip()
+                    else:
+                        question = input_text.split("\n")[0].strip()
+                
+                if question not in question_groups:
+                    question_groups[question] = []
+                question_groups[question].append(ex)
             
-            # Create pairs from groups
-            for input_text, examples in input_groups.items():
+            # Create preferred/rejected pairs from each question group
+            for question, examples in question_groups.items():
                 true_examples = [ex for ex in examples if ex["label"] == "True"]
                 false_examples = [ex for ex in examples if ex["label"] == "False"]
                 
-                # Create pairs
-                for true_ex in true_examples:
-                    for false_ex in false_examples:
+                # Create all possible (preferred, rejected) pairs
+                for true_ex in true_examples:  # Preferred (correct solutions)
+                    for false_ex in false_examples:  # Rejected (incorrect solutions)
+                        # Extract the solution from the input
+                        preferred_solution = true_ex.get("metadata", {}).get("solution", "")
+                        rejected_solution = false_ex.get("metadata", {}).get("solution", "")
+                        
                         dpo_example = {
-                            "prompt": input_text,
-                            "chosen": "True",
-                            "rejected": "False",
+                            "prompt": question,  # The mathematical question
+                            "chosen": preferred_solution,  # ICM-labeled True solution
+                            "rejected": rejected_solution,  # ICM-labeled False solution
                             "chosen_metadata": true_ex.get("metadata", {}),
                             "rejected_metadata": false_ex.get("metadata", {})
                         }
                         dpo_examples.append(dpo_example)
         else:
-            # Simple format
+            # Simple format - just convert to preference pairs
             for ex in labeled_examples:
+                solution = ex.get("metadata", {}).get("solution", "")
+                question = ex.get("metadata", {}).get("question", "")
+                
                 if ex["label"] == "True":
                     dpo_example = {
-                        "prompt": ex["input"],
-                        "chosen": "True",
-                        "rejected": "False"
+                        "prompt": question,
+                        "chosen": solution,
+                        "rejected": "This solution is incorrect."
                     }
                 else:
                     dpo_example = {
-                        "prompt": ex["input"],
-                        "chosen": "False",
-                        "rejected": "True"
+                        "prompt": question,
+                        "chosen": "This solution is correct.",
+                        "rejected": solution
                     }
                 dpo_examples.append(dpo_example)
         
@@ -219,40 +238,9 @@ class ICMExporter:
             for example in dpo_examples:
                 f.write(json.dumps(example) + '\n')
         
-        self.logger.info(f"Exported to DPO format: {output_path}")
+        self.logger.info(f"Exported {len(dpo_examples)} DPO pairs to: {output_path}")
         return output_path
     
-    def export_to_sft_format(
-        self,
-        labeled_examples: List[Dict[str, Any]],
-        output_path: str
-    ) -> str:
-        """
-        Export to SFT training format.
-        
-        Args:
-            labeled_examples: List of labeled examples
-            output_path: Output file path
-            
-        Returns:
-            Path to exported file
-        """
-        sft_examples = []
-        
-        for ex in labeled_examples:
-            sft_example = {
-                "instruction": ex["input"],
-                "output": ex["label"],
-                "metadata": ex.get("metadata", {})
-            }
-            sft_examples.append(sft_example)
-        
-        with open(output_path, 'w') as f:
-            for example in sft_examples:
-                f.write(json.dumps(example) + '\n')
-        
-        self.logger.info(f"Exported to SFT format: {output_path}")
-        return output_path
     
     def export_to_csv(
         self,

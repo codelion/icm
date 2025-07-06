@@ -7,7 +7,7 @@
 - **Unsupervised Learning**: Generate high-quality labeled datasets without human supervision
 - **Mutual Predictability**: Find labels that are logically consistent and mutually predictable
 - **Multiple Task Types**: Support for classification, comparison, mathematical reasoning, and more
-- **Flexible Export**: Export to various formats (DPO, SFT, CSV, JSON) and push to Hugging Face
+- **Flexible Export**: Export to various formats (DPO, CSV, JSON) and push to Hugging Face
 
 ## Installation
 
@@ -49,7 +49,7 @@ icm push --input-path truthfulqa_dpo.jsonl --hf-repo-id your-username/icm-truthf
 
 | Use Case | Dataset | Link |
 |----------|----------|-------|
-| Fine-tuning the model | sft dataset | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1LfNDIvZs98hFBZzEc4ukYO1ZXLpM7WXS?usp=sharing) |
+| Fine-tuning the model | dpo dataset | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1LfNDIvZs98hFBZzEc4ukYO1ZXLpM7WXS?usp=sharing) |
 
 ## Algorithm Overview
 
@@ -215,7 +215,7 @@ Export ICM results to various formats.
 **Required Arguments:**
 - `--input-path`: Path to ICM result file
 - `--output-path`: Output file path
-- `--format`: Export format (`json`, `dpo`, `sft`, `csv`, `analysis`)
+- `--format`: Export format (`json`, `dpo`, `csv`, `analysis`)
 
 **Optional Arguments:**
 - `--include-stats`: Include statistics in JSON export
