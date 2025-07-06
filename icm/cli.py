@@ -47,6 +47,9 @@ def run_icm(args):
     
     try:
         # Load dataset
+        # Use max_examples to control base question sampling (for diverse solution generation)
+        base_question_limit = args.max_examples if args.max_examples else args.sample_size
+        
         if args.synthetic:
             logger.info(f"Creating synthetic {args.synthetic} dataset")
             dataset = create_synthetic_dataset(
@@ -61,13 +64,13 @@ def run_icm(args):
             task_type=args.task_type,
             split=args.split,
             config=args.config,
-            sample_size=args.sample_size,
+            sample_size=base_question_limit,
             seed=args.seed
             )
         
         logger.info(f"Loaded {len(dataset)} examples")
-        if args.max_examples:
-            logger.info(f"Will process up to {args.max_examples} examples")
+        if base_question_limit:
+            logger.info(f"Generated diverse solutions from {base_question_limit} base questions")
         
         # Create consistency checker if custom rules specified
         consistency_checker = LogicalConsistencyChecker()

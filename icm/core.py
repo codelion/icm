@@ -183,7 +183,8 @@ class ICMSearcher:
         """
         self.logger.info(f"Starting ICM search on {len(dataset)} examples")
         
-        examples = dataset.examples[:max_examples] if max_examples else dataset.examples
+        # Use all examples since sampling is now handled at dataset loading level
+        examples = dataset.examples
         
         # Initialize with K randomly labeled examples
         labeled_data = self._initialize_labeled_data(examples, task_type)
