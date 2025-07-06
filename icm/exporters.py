@@ -215,24 +215,39 @@ class ICMExporter:
                         }
                         dpo_examples.append(dpo_example)
         else:
-            # Simple format - just convert to preference pairs
+            # Simple format - create pairs within same question groups
+            # Group by question first
+            question_groups = {}
             for ex in labeled_examples:
-                solution = ex.get("metadata", {}).get("solution", "")
                 question = ex.get("metadata", {}).get("question", "")
+                if not question:
+                    # Fallback: extract question from input text
+                    input_text = ex["input"]
+                    if "Question:" in input_text:
+                        question = input_text.split("Question:")[1].split("\n")[0].strip()
+                    else:
+                        question = input_text.split("\n")[0].strip()
                 
-                if ex["label"] == "True":
+                if question not in question_groups:
+                    question_groups[question] = []
+                question_groups[question].append(ex)
+            
+            # For each question, find a preferred and rejected solution
+            for question, examples in question_groups.items():
+                true_examples = [ex for ex in examples if ex["label"] == "True"]
+                false_examples = [ex for ex in examples if ex["label"] == "False"]
+                
+                # If we have both true and false examples, create a pair
+                if true_examples and false_examples:
+                    preferred_solution = true_examples[0].get("metadata", {}).get("solution", "")
+                    rejected_solution = false_examples[0].get("metadata", {}).get("solution", "")
+                    
                     dpo_example = {
                         "prompt": question,
-                        "chosen": solution,
-                        "rejected": "This solution is incorrect."
+                        "chosen": preferred_solution,
+                        "rejected": rejected_solution
                     }
-                else:
-                    dpo_example = {
-                        "prompt": question,
-                        "chosen": "This solution is correct.",
-                        "rejected": solution
-                    }
-                dpo_examples.append(dpo_example)
+                    dpo_examples.append(dpo_example)
         
         with open(output_path, 'w') as f:
             for example in dpo_examples:
