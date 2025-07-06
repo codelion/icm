@@ -130,7 +130,14 @@ def load_icm_dataset(
     if task_type == "auto":
         task_type = _detect_task_type(raw_examples, dataset_name)
     
-    # Convert to ICM examples based on task type
+    # Sample raw examples BEFORE conversion to control number of base questions
+    if sample_size is not None:
+        if sample_size < len(raw_examples):
+            logger.info(f"Sampling {sample_size} base questions from {len(raw_examples)} available")
+            random.seed(seed)
+            raw_examples = random.sample(raw_examples, sample_size)
+    
+    # Convert to ICM examples based on task type (this will multiply examples)
     if task_type == "truthfulqa":
         examples = _convert_truthfulqa(raw_examples)
     elif task_type == "gsm8k":
@@ -144,10 +151,6 @@ def load_icm_dataset(
     
     # Create dataset
     dataset = ICMDataset(examples, {"task_type": task_type, "source": dataset_name})
-    
-    # Sample if requested
-    if sample_size is not None:
-        dataset = dataset.sample(sample_size, seed)
     
     logger.info(f"Loaded {len(dataset)} examples for {task_type} task")
     return dataset
@@ -294,7 +297,7 @@ def _detect_task_type(examples: List[Dict[str, Any]], dataset_name: str) -> str:
 
 
 def _convert_truthfulqa(examples: List[Dict[str, Any]]) -> List[ICMExample]:
-    """Convert TruthfulQA examples to ICM format."""
+    """Convert TruthfulQA examples to ICM format with diverse answer generation."""
     icm_examples = []
     
     for example in examples:
@@ -305,27 +308,37 @@ def _convert_truthfulqa(examples: List[Dict[str, Any]]) -> List[ICMExample]:
             choices = example["mc1_targets"]["choices"]
             labels = example["mc1_targets"]["labels"]
             
-            for choice, label in zip(choices, labels):
+            # Generate diverse solutions for each question
+            all_choices = list(zip(choices, labels))
+            diverse_choices = _generate_diverse_truthfulqa_answers(question, all_choices)
+            
+            for choice in diverse_choices:
                 input_text = f"Question: {question}\nClaim: {choice}\nI think this Claim is [True/False]"
                 metadata = {
                     "question": question,
                     "choice": choice,
-                    "gold_label": "True" if label == 1 else "False",
                     "task": "truthfulness"
+                    # No gold_label - ICM will determine this
                 }
                 icm_examples.append(ICMExample(input_text, metadata))
         
         # Handle best answer format
         elif "best_answer" in example:
             best_answer = example["best_answer"]
-            input_text = f"Question: {question}\nClaim: {best_answer}\nI think this Claim is [True/False]"
-            metadata = {
-                "question": question,
-                "answer": best_answer,
-                "gold_label": "True",
-                "task": "truthfulness"
-            }
-            icm_examples.append(ICMExample(input_text, metadata))
+            incorrect_answers = example.get("incorrect_answers", [])
+            
+            # Generate diverse answers
+            diverse_answers = _generate_diverse_truthfulqa_answers(question, [(best_answer, True)] + [(ans, False) for ans in incorrect_answers[:3]])
+            
+            for answer in diverse_answers:
+                input_text = f"Question: {question}\nClaim: {answer}\nI think this Claim is [True/False]"
+                metadata = {
+                    "question": question,
+                    "answer": answer,
+                    "task": "truthfulness"
+                    # No gold_label - ICM will determine this
+                }
+                icm_examples.append(ICMExample(input_text, metadata))
     
     return icm_examples
 
@@ -405,8 +418,66 @@ def _generate_diverse_solutions(question: str, original_answer: str, num_solutio
     return solutions[:num_solutions]
 
 
+def _generate_diverse_truthfulqa_answers(question: str, choices_with_labels: List[tuple], num_answers: int = 4) -> List[str]:
+    """
+    Generate diverse answers for TruthfulQA questions.
+    Returns a mix of correct and incorrect answers.
+    """
+    answers = []
+    
+    # Separate correct and incorrect answers
+    correct_answers = [choice for choice, label in choices_with_labels if label == 1 or label is True]
+    incorrect_answers = [choice for choice, label in choices_with_labels if label == 0 or label is False]
+    
+    # Include at least one correct answer if available
+    if correct_answers:
+        answers.append(correct_answers[0])
+    
+    # Add incorrect answers
+    for incorrect in incorrect_answers[:2]:
+        answers.append(incorrect)
+    
+    # Generate additional plausible but incorrect answer
+    if len(answers) < num_answers:
+        generic_wrong = f"This is a common misconception about {question.split('?')[0].lower()}."
+        answers.append(generic_wrong)
+    
+    return answers[:num_answers]
+
+
+def _generate_diverse_classification_claims(text: str, original_label: Any, num_claims: int = 4) -> List[str]:
+    """
+    Generate diverse classification claims for a given text.
+    Returns a mix of correct and incorrect claims.
+    """
+    claims = []
+    
+    # Generate different types of claims
+    claims.append(f"This text is positive in sentiment")
+    claims.append(f"This text is negative in sentiment")
+    claims.append(f"This text is neutral in sentiment")
+    claims.append(f"This text contains factual information")
+    
+    return claims[:num_claims]
+
+
+def _generate_diverse_comparison_claims(query: str, response_a: str, response_b: str, num_claims: int = 4) -> List[str]:
+    """
+    Generate diverse comparison claims for two responses.
+    Returns a mix of different comparison criteria.
+    """
+    claims = []
+    
+    claims.append("Response A is better than Response B")
+    claims.append("Response B is better than Response A")
+    claims.append("Response A is more accurate than Response B")
+    claims.append("Response A is more helpful than Response B")
+    
+    return claims[:num_claims]
+
+
 def _convert_classification(examples: List[Dict[str, Any]]) -> List[ICMExample]:
-    """Convert generic classification examples to ICM format."""
+    """Convert generic classification examples to ICM format with diverse claims."""
     icm_examples = []
     
     for example in examples:
@@ -430,19 +501,24 @@ def _convert_classification(examples: List[Dict[str, Any]]) -> List[ICMExample]:
         if text is None:
             continue
         
-        input_text = f"Input: {text}\nClaim: [This needs to be classified]\nI think this Claim is [True/False]"
-        metadata = {
-            "original_text": text,
-            "gold_label": str(label) if label is not None else "Unknown",
-            "task": "classification"
-        }
-        icm_examples.append(ICMExample(input_text, metadata))
+        # Generate diverse classification claims
+        diverse_claims = _generate_diverse_classification_claims(text, label)
+        
+        for claim in diverse_claims:
+            input_text = f"Input: {text}\nClaim: {claim}\nI think this Claim is [True/False]"
+            metadata = {
+                "original_text": text,
+                "claim": claim,
+                "task": "classification"
+                # No gold_label - ICM will determine this
+            }
+            icm_examples.append(ICMExample(input_text, metadata))
     
     return icm_examples
 
 
 def _convert_comparison(examples: List[Dict[str, Any]]) -> List[ICMExample]:
-    """Convert comparison examples to ICM format."""
+    """Convert comparison examples to ICM format with diverse comparison claims."""
     icm_examples = []
     
     for example in examples:
@@ -460,15 +536,20 @@ def _convert_comparison(examples: List[Dict[str, Any]]) -> List[ICMExample]:
         
         query = example.get("query", example.get("prompt", "Compare these responses"))
         
-        input_text = f"Query: {query}\nResponse A: {response_a}\nResponse B: {response_b}\nClaim: Response A is better than Response B\nI think this Claim is [True/False]"
-        metadata = {
-            "query": query,
-            "response_a": response_a,
-            "response_b": response_b,
-            "gold_label": "True" if preferred == "A" else "False",
-            "task": "comparison"
-        }
-        icm_examples.append(ICMExample(input_text, metadata))
+        # Generate diverse comparison claims
+        diverse_claims = _generate_diverse_comparison_claims(query, response_a, response_b)
+        
+        for claim in diverse_claims:
+            input_text = f"Query: {query}\nResponse A: {response_a}\nResponse B: {response_b}\nClaim: {claim}\nI think this Claim is [True/False]"
+            metadata = {
+                "query": query,
+                "response_a": response_a,
+                "response_b": response_b,
+                "claim": claim,
+                "task": "comparison"
+                # No gold_label - ICM will determine this
+            }
+            icm_examples.append(ICMExample(input_text, metadata))
     
     return icm_examples
 
@@ -483,7 +564,7 @@ def create_synthetic_dataset(
     
     Args:
         task_type: Type of task to create
-        num_examples: Number of examples to generate
+        num_examples: Number of base questions to generate (will be multiplied by diverse solutions)
         seed: Random seed
         
     Returns:
@@ -497,15 +578,19 @@ def create_synthetic_dataset(
             a = random.randint(1, 100)
             b = random.randint(1, 100)
             correct_answer = a + b
-            wrong_answer = correct_answer + random.randint(1, 10)
+            question = f"What is {a} + {b}?"
             
-            # Correct solution
-            input_text = f"Question: What is {a} + {b}?\nClaim: {a} + {b} = {correct_answer}\nI think this Claim is [True/False]"
-            examples.append(ICMExample(input_text, {"gold_label": "True", "task": "math"}))
+            # Generate diverse solutions for this question
+            correct_solution = f"{a} + {b} = {correct_answer}"
+            wrong_solution1 = f"{a} + {b} = {correct_answer + random.randint(1, 10)}"
+            wrong_solution2 = f"{a} + {b} = {correct_answer - random.randint(1, 5)}"
+            nonsense_solution = f"The answer is clearly 42"
             
-            # Wrong solution
-            input_text = f"Question: What is {a} + {b}?\nClaim: {a} + {b} = {wrong_answer}\nI think this Claim is [True/False]"
-            examples.append(ICMExample(input_text, {"gold_label": "False", "task": "math"}))
+            solutions = [correct_solution, wrong_solution1, wrong_solution2, nonsense_solution]
+            
+            for solution in solutions:
+                input_text = f"Question: {question}\nClaim: {solution}\nI think this Claim is [True/False]"
+                examples.append(ICMExample(input_text, {"question": question, "solution": solution, "task": "math"}))
     
     elif task_type == "comparison":
         for i in range(num_examples):
@@ -513,7 +598,16 @@ def create_synthetic_dataset(
             a = random.randint(1, 100)
             b = random.randint(1, 100)
             
-            input_text = f"Query: {query}\nResponse A: {a}\nResponse B: {b}\nClaim: Response A is larger than Response B\nI think this Claim is [True/False]"
-            examples.append(ICMExample(input_text, {"gold_label": "True" if a > b else "False", "task": "comparison"}))
+            # Generate diverse comparison claims
+            claims = [
+                "Response A is larger than Response B",
+                "Response B is larger than Response A", 
+                "Response A is equal to Response B",
+                "Both responses are the same"
+            ]
+            
+            for claim in claims:
+                input_text = f"Query: {query}\nResponse A: {a}\nResponse B: {b}\nClaim: {claim}\nI think this Claim is [True/False]"
+                examples.append(ICMExample(input_text, {"query": query, "response_a": str(a), "response_b": str(b), "claim": claim, "task": "comparison"}))
     
     return ICMDataset(examples, {"task_type": task_type, "synthetic": True})
