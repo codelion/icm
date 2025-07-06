@@ -365,17 +365,17 @@ def parse_args():
                            choices=["jsonl", "json", "csv"], help="Output format")
     
     # ICM algorithm parameters
-    run_parser.add_argument("--alpha", type=float, default=50.0, help="Weight for mutual predictability")
-    run_parser.add_argument("--initial-temperature", type=float, default=10.0, help="Initial temperature")
-    run_parser.add_argument("--final-temperature", type=float, default=0.01, help="Final temperature")
-    run_parser.add_argument("--cooling-rate", type=float, default=0.99, help="Cooling rate")
-    run_parser.add_argument("--initial-examples", type=int, default=8, help="Number of initial examples (K)")
+    run_parser.add_argument("--alpha", type=float, default=100.0, help="Weight for mutual predictability vs consistency")
+    run_parser.add_argument("--initial-temperature", type=float, default=3.0, help="Initial temperature for simulated annealing")
+    run_parser.add_argument("--final-temperature", type=float, default=0.001, help="Final temperature for simulated annealing")
+    run_parser.add_argument("--cooling-rate", type=float, default=0.98, help="Temperature cooling rate")
+    run_parser.add_argument("--initial-examples", type=int, default=20, help="Number of initial randomly labeled examples (K)")
     run_parser.add_argument("--max-iterations", type=int, default=1000, help="Maximum iterations")
     run_parser.add_argument("--consistency-fix-iterations", type=int, default=10, 
                            help="Max iterations for consistency fixing")
     
     # Generation parameters
-    run_parser.add_argument("--generation-temperature", type=float, default=0.7, help="Generation temperature")
+    run_parser.add_argument("--generation-temperature", type=float, default=0.2, help="Temperature for text generation")
     run_parser.add_argument("--generation-top-p", type=float, default=0.9, help="Generation top-p")
     run_parser.add_argument("--generation-max-tokens", type=int, default=512, help="Max generation tokens")
     

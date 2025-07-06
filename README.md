@@ -191,15 +191,15 @@ Run ICM on a dataset to generate labeled examples.
 - `--synthetic-size`: Number of synthetic examples to generate (default: 100)
 
 **ICM Algorithm Parameters:**
-- `--alpha`: Weight for mutual predictability vs consistency (default: 50.0)
-- `--initial-temperature`: Starting temperature for simulated annealing (default: 10.0)
-- `--final-temperature`: Ending temperature (default: 0.01)
-- `--cooling-rate`: Temperature cooling rate (default: 0.99)
-- `--initial-examples`: Number of initial random examples (default: 8)
+- `--alpha`: Weight for mutual predictability vs consistency (default: 100.0)
+- `--initial-temperature`: Starting temperature for simulated annealing (default: 3.0)
+- `--final-temperature`: Ending temperature (default: 0.001)
+- `--cooling-rate`: Temperature cooling rate (default: 0.98)
+- `--initial-examples`: Number of initial random examples (default: 20)
 - `--max-iterations`: Maximum search iterations (default: 1000)
 
 **Generation Parameters:**
-- `--generation-temperature`: Temperature for text generation (default: 0.7)
+- `--generation-temperature`: Temperature for text generation (default: 0.2)
 - `--generation-top-p`: Top-p for nucleus sampling (default: 0.9)
 - `--generation-max-tokens`: Maximum tokens to generate (default: 512)
 
