@@ -47,9 +47,6 @@ def run_icm(args):
     
     try:
         # Load dataset
-        # Use max_examples to control base question sampling (for diverse solution generation)
-        base_question_limit = args.max_examples if args.max_examples else args.sample_size
-        
         if args.synthetic:
             logger.info(f"Creating synthetic {args.synthetic} dataset")
             dataset = create_synthetic_dataset(
@@ -64,13 +61,11 @@ def run_icm(args):
             task_type=args.task_type,
             split=args.split,
             config=args.config,
-            sample_size=base_question_limit,
+            sample_size=args.sample_size,
             seed=args.seed
             )
         
         logger.info(f"Loaded {len(dataset)} examples")
-        if base_question_limit:
-            logger.info(f"Generated diverse solutions from {base_question_limit} base questions")
         
         # Create consistency checker if custom rules specified
         consistency_checker = LogicalConsistencyChecker()
@@ -359,7 +354,7 @@ def parse_args():
     run_parser.add_argument("--split", type=str, default="train", help="Dataset split")
     run_parser.add_argument("--config", type=str, default=None, help="Dataset configuration (e.g., 'multiple_choice' for truthful_qa)")
     run_parser.add_argument("--sample-size", type=int, default=None, help="Sample size from dataset")
-    run_parser.add_argument("--max-examples", type=int, default=None, help="Maximum examples to process")
+    run_parser.add_argument("--max-examples", type=int, default=None, help="Maximum examples available for labeling (limits the pool of examples ICM can label)")
     run_parser.add_argument("--output-dir", type=str, default="icm_results", help="Output directory")
     run_parser.add_argument("--output-name", type=str, default=None, help="Output name prefix")
     run_parser.add_argument("--output-format", type=str, default="jsonl", 

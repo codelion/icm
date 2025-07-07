@@ -186,6 +186,11 @@ class ICMSearcher:
         # Use all examples since sampling is now handled at dataset loading level
         examples = dataset.examples
         
+        # Apply max_examples limit if specified
+        if max_examples and max_examples < len(examples):
+            self.logger.info(f"Limiting to {max_examples} examples for labeling")
+            examples = examples[:max_examples]
+        
         # Initialize with K randomly labeled examples
         labeled_data = self._initialize_labeled_data(examples, task_type)
         
@@ -240,7 +245,12 @@ class ICMSearcher:
                     
                     # Progress logging
                     if iteration > 0 and iteration % 100 == 0:
-                        self.logger.info(f"Iteration {iteration}: score = {best_score:.4f}, temp = {temperature:.6f}")
+                        self.logger.info(f"Iteration {iteration}: score = {best_score:.4f}, temp = {temperature:.6f}, labeled = {len(labeled_data)}/{len(examples)}")
+                        
+                    # Check if all examples are labeled
+                    if len(labeled_data) >= len(examples):
+                        self.logger.info(f"All {len(examples)} examples labeled. Stopping early.")
+                        break
                         
                     # Early stopping if temperature is very low and no improvement
                     if iteration > 100 and temperature < self.final_temperature * 2:
