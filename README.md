@@ -49,7 +49,7 @@ icm push --input-path truthfulqa_dpo.jsonl --hf-repo-id your-username/icm-truthf
 
 | Use Case | Dataset | Link |
 |----------|----------|-------|
-| Fine-tuning the model | dpo dataset | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1LfNDIvZs98hFBZzEc4ukYO1ZXLpM7WXS?usp=sharing) |
+| Fine-tuning the model | dpo dataset | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1iJFjnTAjPPxjBi0PC3qQSLFIMFsANRUO?usp=sharing)|
 
 ## Algorithm Overview
 
