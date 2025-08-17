@@ -282,27 +282,27 @@ def _load_huggingface_dataset(dataset_name: str, split: str, config: Optional[st
         # Check if this is a missing config error
         elif "Config name is missing" in error_msg or "available configs" in error_msg:
             # Try to auto-detect appropriate config for known datasets
-            auto_config = _get_default_config(dataset_name)
+            auto_config = _get_default_config(actual_dataset_name)
             if auto_config and auto_config != config:  # Only try if different from what we already tried
-                logger.info(f"Auto-detected config '{auto_config}' for {dataset_name}")
+                logger.info(f"Auto-detected config '{auto_config}' for {actual_dataset_name}")
                 try:
-                    dataset = hf_load_dataset(dataset_name, auto_config, split=split)
+                    dataset = hf_load_dataset(actual_dataset_name, auto_config, split=split, trust_remote_code=trust_remote)
                     return list(dataset)
                 except Exception as e2:
                     # Also try with default split
-                    default_split = _get_default_split(dataset_name, auto_config)
+                    default_split = _get_default_split(actual_dataset_name, auto_config)
                     if default_split != split:
                         logger.info(f"Also trying default split '{default_split}'")
                         try:
-                            dataset = hf_load_dataset(dataset_name, auto_config, split=default_split)
+                            dataset = hf_load_dataset(actual_dataset_name, auto_config, split=default_split, trust_remote_code=trust_remote)
                             return list(dataset)
                         except Exception as e3:
                             logger.warning(f"Failed with auto-config {auto_config} and split {default_split}: {e3}")
             
             # Provide helpful error message
-            raise ValueError(f"Dataset {dataset_name} requires a config parameter. {error_msg}")
+            raise ValueError(f"Dataset {actual_dataset_name} requires a config parameter. {error_msg}")
         
-        raise ValueError(f"Failed to load dataset {dataset_name}: {e}")
+        raise ValueError(f"Failed to load dataset {actual_dataset_name}: {e}")
 
 
 def _detect_task_type(examples: List[Dict[str, Any]], dataset_name: str) -> str:
