@@ -439,6 +439,134 @@ This dataset is released under the same license as the source data and model use
         return readme
 
 
+def combine_icm_results_to_dpo(
+    result_files: List[str],
+    output_path: str,
+    storage: Optional[ICMStorage] = None
+) -> str:
+    """
+    Combine multiple ICM result files into a single DPO dataset.
+    
+    Args:
+        result_files: List of ICM result file paths
+        output_path: Output file path for combined DPO dataset
+        storage: ICM storage instance (optional)
+        
+    Returns:
+        Path to combined DPO dataset
+    """
+    logger = logging.getLogger(__name__)
+    storage = storage or ICMStorage()
+    
+    all_dpo_examples = []
+    dataset_sources = {}
+    
+    for result_file in result_files:
+        logger.info(f"Loading ICM results from {result_file}")
+        
+        # Load the ICM result
+        result = storage.load(result_file)
+        
+        if not result:
+            logger.warning(f"Could not load {result_file}, skipping")
+            continue
+        
+        labeled_examples = result.get("labeled_examples", [])
+        dataset_name = result.get("dataset", "unknown")
+        
+        # Track source dataset counts
+        dataset_sources[dataset_name] = dataset_sources.get(dataset_name, 0) + len(labeled_examples)
+        
+        # Group by question to create pairs
+        question_groups = {}
+        for ex in labeled_examples:
+            # Extract question from metadata or input
+            question = ex.get("metadata", {}).get("question", "")
+            if not question:
+                # Try to extract from other fields
+                question = ex.get("metadata", {}).get("goal", "")  # PIQA
+                if not question:
+                    question = ex.get("metadata", {}).get("context", "")  # HellaSwag
+                if not question:
+                    question = ex.get("metadata", {}).get("sentence", "")  # WinoGrande
+                if not question:
+                    question = ex.get("metadata", {}).get("instruction", "")  # IFEval
+                if not question:
+                    # Fallback: extract from input text
+                    input_text = ex["input"]
+                    if "Question:" in input_text:
+                        question = input_text.split("Question:")[1].split("\n")[0].strip()
+                    elif "Goal:" in input_text:
+                        question = input_text.split("Goal:")[1].split("\n")[0].strip()
+                    elif "Context:" in input_text:
+                        question = input_text.split("Context:")[1].split("\n")[0].strip()
+                    else:
+                        question = input_text.split("\n")[0].strip()
+            
+            if question not in question_groups:
+                question_groups[question] = []
+            question_groups[question].append(ex)
+        
+        # Create DPO pairs from each question group
+        for question, examples in question_groups.items():
+            true_examples = [ex for ex in examples if ex["label"] == "True"]
+            false_examples = [ex for ex in examples if ex["label"] == "False"]
+            
+            # Create pairs
+            for true_ex in true_examples:
+                for false_ex in false_examples:
+                    # Extract solutions/answers based on task type
+                    task_type = true_ex.get("metadata", {}).get("task", "")
+                    
+                    if task_type == "mathematical_correctness":
+                        preferred = true_ex.get("metadata", {}).get("solution", "")
+                        rejected = false_ex.get("metadata", {}).get("solution", "")
+                    elif task_type == "physical_reasoning":
+                        preferred = true_ex.get("metadata", {}).get("solution", "")
+                        rejected = false_ex.get("metadata", {}).get("solution", "")
+                    elif task_type == "common_sense_completion":
+                        preferred = true_ex.get("metadata", {}).get("ending", "")
+                        rejected = false_ex.get("metadata", {}).get("ending", "")
+                    elif task_type == "science_qa":
+                        preferred = true_ex.get("metadata", {}).get("answer", "")
+                        rejected = false_ex.get("metadata", {}).get("answer", "")
+                    elif task_type == "pronoun_resolution":
+                        preferred = true_ex.get("metadata", {}).get("filled_sentence", "")
+                        rejected = false_ex.get("metadata", {}).get("filled_sentence", "")
+                    else:
+                        # Generic extraction
+                        preferred = true_ex.get("metadata", {}).get("answer", 
+                                   true_ex.get("metadata", {}).get("solution", 
+                                   true_ex.get("metadata", {}).get("choice", "")))
+                        rejected = false_ex.get("metadata", {}).get("answer",
+                                  false_ex.get("metadata", {}).get("solution",
+                                  false_ex.get("metadata", {}).get("choice", "")))
+                    
+                    if preferred and rejected:
+                        dpo_example = {
+                            "prompt": question,
+                            "chosen": preferred,
+                            "rejected": rejected,
+                            "source_dataset": dataset_name,
+                            "task_type": task_type
+                        }
+                        all_dpo_examples.append(dpo_example)
+    
+    # Write combined DPO dataset
+    with open(output_path, 'w') as f:
+        for example in all_dpo_examples:
+            f.write(json.dumps(example) + '\n')
+    
+    # Log summary
+    logger.info(f"Combined DPO dataset created: {output_path}")
+    logger.info(f"Total DPO pairs: {len(all_dpo_examples)}")
+    logger.info("Source datasets:")
+    for dataset, count in dataset_sources.items():
+        logger.info(f"  - {dataset}: {count} examples")
+    
+    return output_path
+
+
 def push_to_huggingface(
     file_path: str,
     repo_id: str,

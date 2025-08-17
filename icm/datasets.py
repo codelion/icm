@@ -142,6 +142,18 @@ def load_icm_dataset(
         examples = _convert_truthfulqa(raw_examples)
     elif task_type == "gsm8k":
         examples = _convert_gsm8k(raw_examples)
+    elif task_type == "hellaswag":
+        examples = _convert_hellaswag(raw_examples)
+    elif task_type == "piqa":
+        examples = _convert_piqa(raw_examples)
+    elif task_type == "arc_challenge":
+        examples = _convert_arc_challenge(raw_examples)
+    elif task_type == "winogrande":
+        examples = _convert_winogrande(raw_examples)
+    elif task_type == "bigbench_hard":
+        examples = _convert_bigbench_hard(raw_examples)
+    elif task_type == "ifeval":
+        examples = _convert_ifeval(raw_examples)
     elif task_type == "classification":
         examples = _convert_classification(raw_examples)
     elif task_type == "comparison":
@@ -182,6 +194,10 @@ def _get_default_config(dataset_name: str) -> Optional[str]:
         "gsm8k": "main",  # Default to main config for gsm8k
         "super_glue": "boolq",  # Default to boolq for super_glue
         "glue": "cola",  # Default to cola for glue
+        "ai2_arc": "ARC-Challenge",  # ARC Challenge configuration
+        "allenai/ai2_arc": "ARC-Challenge",
+        "arc": "ARC-Challenge",
+        "winogrande": "winogrande_xl",  # Default WinoGrande config
     }
     
     for dataset_key, default_config in dataset_configs.items():
@@ -196,6 +212,13 @@ def _get_default_split(dataset_name: str, config: Optional[str] = None) -> str:
     # Some datasets only have specific splits available
     dataset_splits = {
         "truthful_qa": "validation",  # TruthfulQA only has validation split
+        "hellaswag": "validation",  # HellaSwag uses validation for eval
+        "piqa": "validation",  # PIQA uses validation for eval
+        "ai2_arc": "test",  # ARC uses test split
+        "allenai/ai2_arc": "test",
+        "arc": "test",
+        "winogrande": "validation",  # WinoGrande uses validation
+        "bigbench": "default",  # BIG-Bench Hard uses default split
     }
     
     for dataset_key, default_split in dataset_splits.items():
@@ -276,6 +299,18 @@ def _detect_task_type(examples: List[Dict[str, Any]], dataset_name: str) -> str:
         return "truthfulqa"
     elif "gsm8k" in dataset_name_lower:
         return "gsm8k"
+    elif "hellaswag" in dataset_name_lower:
+        return "hellaswag"
+    elif "piqa" in dataset_name_lower:
+        return "piqa"
+    elif "arc" in dataset_name_lower or "ai2_arc" in dataset_name_lower:
+        return "arc_challenge"
+    elif "winogrande" in dataset_name_lower:
+        return "winogrande"
+    elif "bigbench" in dataset_name_lower or "bbh" in dataset_name_lower:
+        return "bigbench_hard"
+    elif "ifeval" in dataset_name_lower:
+        return "ifeval"
     
     # Look at example structure
     if examples:
@@ -550,6 +585,292 @@ def _convert_comparison(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                 # No gold_label - ICM will determine this
             }
             icm_examples.append(ICMExample(input_text, metadata))
+    
+    return icm_examples
+
+
+def _convert_hellaswag(examples: List[Dict[str, Any]]) -> List[ICMExample]:
+    """Convert HellaSwag examples to ICM format with diverse ending verification."""
+    icm_examples = []
+    
+    for example in examples:
+        ctx_a = example.get("ctx_a", "")
+        ctx_b = example.get("ctx_b", "")
+        ctx = f"{ctx_a} {ctx_b}".strip()
+        
+        # HellaSwag has 4 possible endings
+        endings = example.get("endings", [])
+        activity_label = example.get("activity_label", "")
+        
+        # Create diverse claims for each ending
+        for i, ending in enumerate(endings):
+            # Main claim - direct completion
+            claim = f"Ending {i+1} correctly completes this context"
+            input_text = f"Context: {ctx}\nEnding {i+1}: {ending}\nClaim: {claim}\nI think this Claim is [True/False]"
+            
+            metadata = {
+                "context": ctx,
+                "ending": ending,
+                "ending_index": i,
+                "activity_label": activity_label,
+                "claim": claim,
+                "task": "common_sense_completion"
+            }
+            icm_examples.append(ICMExample(input_text, metadata))
+            
+            # Alternative claim - coherence based
+            alt_claim = f"This ending makes logical sense given the context"
+            alt_input_text = f"Context: {ctx}\nEnding: {ending}\nClaim: {alt_claim}\nI think this Claim is [True/False]"
+            
+            alt_metadata = {
+                "context": ctx,
+                "ending": ending,
+                "ending_index": i,
+                "activity_label": activity_label,
+                "claim": alt_claim,
+                "task": "common_sense_completion"
+            }
+            icm_examples.append(ICMExample(alt_input_text, alt_metadata))
+    
+    return icm_examples
+
+
+def _convert_piqa(examples: List[Dict[str, Any]]) -> List[ICMExample]:
+    """Convert PIQA examples to ICM format with solution verification."""
+    icm_examples = []
+    
+    for example in examples:
+        goal = example.get("goal", "")
+        sol1 = example.get("sol1", "")
+        sol2 = example.get("sol2", "")
+        
+        solutions = [sol1, sol2] if sol1 and sol2 else []
+        
+        for i, solution in enumerate(solutions):
+            # Main claim - solution achieves goal
+            claim = f"Solution {i+1} achieves the goal"
+            input_text = f"Goal: {goal}\nSolution {i+1}: {solution}\nClaim: {claim}\nI think this Claim is [True/False]"
+            
+            metadata = {
+                "goal": goal,
+                "solution": solution,
+                "solution_index": i,
+                "claim": claim,
+                "task": "physical_reasoning"
+            }
+            icm_examples.append(ICMExample(input_text, metadata))
+            
+            # Alternative claim - practical feasibility
+            alt_claim = f"This solution is practically feasible"
+            alt_input_text = f"Goal: {goal}\nSolution: {solution}\nClaim: {alt_claim}\nI think this Claim is [True/False]"
+            
+            alt_metadata = {
+                "goal": goal,
+                "solution": solution,
+                "solution_index": i,
+                "claim": alt_claim,
+                "task": "physical_reasoning"
+            }
+            icm_examples.append(ICMExample(alt_input_text, alt_metadata))
+    
+    return icm_examples
+
+
+def _convert_arc_challenge(examples: List[Dict[str, Any]]) -> List[ICMExample]:
+    """Convert ARC-Challenge examples to ICM format with answer verification."""
+    icm_examples = []
+    
+    for example in examples:
+        question = example.get("question", "")
+        choices = example.get("choices", {})
+        
+        # ARC choices are in format: {"text": [...], "label": [...]}
+        choice_texts = choices.get("text", [])
+        choice_labels = choices.get("label", [])
+        
+        for i, (choice_text, choice_label) in enumerate(zip(choice_texts, choice_labels)):
+            # Main claim - correctness
+            claim = f"Answer {choice_label} is correct"
+            input_text = f"Question: {question}\nAnswer {choice_label}: {choice_text}\nClaim: {claim}\nI think this Claim is [True/False]"
+            
+            metadata = {
+                "question": question,
+                "answer": choice_text,
+                "answer_label": choice_label,
+                "answer_index": i,
+                "claim": claim,
+                "task": "science_qa"
+            }
+            icm_examples.append(ICMExample(input_text, metadata))
+            
+            # Alternative claim - scientific validity
+            alt_claim = f"This answer is scientifically valid"
+            alt_input_text = f"Question: {question}\nAnswer: {choice_text}\nClaim: {alt_claim}\nI think this Claim is [True/False]"
+            
+            alt_metadata = {
+                "question": question,
+                "answer": choice_text,
+                "answer_label": choice_label,
+                "answer_index": i,
+                "claim": alt_claim,
+                "task": "science_qa"
+            }
+            icm_examples.append(ICMExample(alt_input_text, alt_metadata))
+    
+    return icm_examples
+
+
+def _convert_winogrande(examples: List[Dict[str, Any]]) -> List[ICMExample]:
+    """Convert WinoGrande examples to ICM format with pronoun resolution verification."""
+    icm_examples = []
+    
+    for example in examples:
+        sentence = example.get("sentence", "")
+        option1 = example.get("option1", "")
+        option2 = example.get("option2", "")
+        
+        options = [option1, option2] if option1 and option2 else []
+        
+        for i, option in enumerate(options):
+            # Main claim - pronoun resolution
+            claim = f"Option {i+1} correctly resolves the pronoun reference"
+            # Replace the underscore with the option for context
+            filled_sentence = sentence.replace("_", option)
+            input_text = f"Original: {sentence}\nWith Option {i+1}: {filled_sentence}\nClaim: {claim}\nI think this Claim is [True/False]"
+            
+            metadata = {
+                "sentence": sentence,
+                "option": option,
+                "option_index": i,
+                "filled_sentence": filled_sentence,
+                "claim": claim,
+                "task": "pronoun_resolution"
+            }
+            icm_examples.append(ICMExample(input_text, metadata))
+            
+            # Alternative claim - semantic coherence
+            alt_claim = f"This sentence makes semantic sense"
+            alt_input_text = f"Sentence: {filled_sentence}\nClaim: {alt_claim}\nI think this Claim is [True/False]"
+            
+            alt_metadata = {
+                "sentence": sentence,
+                "option": option,
+                "option_index": i,
+                "filled_sentence": filled_sentence,
+                "claim": alt_claim,
+                "task": "pronoun_resolution"
+            }
+            icm_examples.append(ICMExample(alt_input_text, alt_metadata))
+    
+    return icm_examples
+
+
+def _convert_bigbench_hard(examples: List[Dict[str, Any]]) -> List[ICMExample]:
+    """Convert BIG-Bench Hard examples to ICM format with task-specific verification."""
+    icm_examples = []
+    
+    for example in examples:
+        # BIG-Bench Hard has various task formats
+        input_text_raw = example.get("input", "")
+        target = example.get("target", "")
+        
+        # Handle multiple choice if available
+        if "multiple_choice_targets" in example:
+            choices = example["multiple_choice_targets"]
+            for i, choice in enumerate(choices):
+                claim = f"Choice {i+1} is the correct answer"
+                input_text = f"Problem: {input_text_raw}\nChoice {i+1}: {choice}\nClaim: {claim}\nI think this Claim is [True/False]"
+                
+                metadata = {
+                    "problem": input_text_raw,
+                    "choice": choice,
+                    "choice_index": i,
+                    "target": target,
+                    "claim": claim,
+                    "task": "reasoning"
+                }
+                icm_examples.append(ICMExample(input_text, metadata))
+        else:
+            # Handle as open-ended reasoning
+            claim = f"This answer correctly solves the problem"
+            input_text = f"Problem: {input_text_raw}\nAnswer: {target}\nClaim: {claim}\nI think this Claim is [True/False]"
+            
+            metadata = {
+                "problem": input_text_raw,
+                "answer": target,
+                "claim": claim,
+                "task": "reasoning"
+            }
+            icm_examples.append(ICMExample(input_text, metadata))
+            
+            # Add a contrasting incorrect answer
+            wrong_answer = "The answer is 42"  # Generic wrong answer
+            wrong_claim = f"This answer correctly solves the problem"
+            wrong_input_text = f"Problem: {input_text_raw}\nAnswer: {wrong_answer}\nClaim: {wrong_claim}\nI think this Claim is [True/False]"
+            
+            wrong_metadata = {
+                "problem": input_text_raw,
+                "answer": wrong_answer,
+                "claim": wrong_claim,
+                "task": "reasoning"
+            }
+            icm_examples.append(ICMExample(wrong_input_text, wrong_metadata))
+    
+    return icm_examples
+
+
+def _convert_ifeval(examples: List[Dict[str, Any]]) -> List[ICMExample]:
+    """Convert IFEval examples to ICM format with instruction-following verification."""
+    icm_examples = []
+    
+    for example in examples:
+        prompt = example.get("prompt", "")
+        response = example.get("response", "")
+        instruction_id_list = example.get("instruction_id_list", [])
+        kwargs = example.get("kwargs", [])
+        
+        # Create verification claims for instruction following
+        claim = f"This response correctly follows the given instruction"
+        input_text = f"Instruction: {prompt}\nResponse: {response}\nClaim: {claim}\nI think this Claim is [True/False]"
+        
+        metadata = {
+            "instruction": prompt,
+            "response": response,
+            "instruction_ids": instruction_id_list,
+            "kwargs": kwargs,
+            "claim": claim,
+            "task": "instruction_following"
+        }
+        icm_examples.append(ICMExample(input_text, metadata))
+        
+        # Alternative claim - completeness
+        alt_claim = f"This response completely addresses the instruction"
+        alt_input_text = f"Instruction: {prompt}\nResponse: {response}\nClaim: {alt_claim}\nI think this Claim is [True/False]"
+        
+        alt_metadata = {
+            "instruction": prompt,
+            "response": response,
+            "instruction_ids": instruction_id_list,
+            "kwargs": kwargs,
+            "claim": alt_claim,
+            "task": "instruction_following"
+        }
+        icm_examples.append(ICMExample(alt_input_text, alt_metadata))
+        
+        # Create a contrasting poor response
+        poor_response = "I don't understand the question."
+        poor_claim = f"This response correctly follows the given instruction"
+        poor_input_text = f"Instruction: {prompt}\nResponse: {poor_response}\nClaim: {poor_claim}\nI think this Claim is [True/False]"
+        
+        poor_metadata = {
+            "instruction": prompt,
+            "response": poor_response,
+            "instruction_ids": instruction_id_list,
+            "kwargs": kwargs,
+            "claim": poor_claim,
+            "task": "instruction_following"
+        }
+        icm_examples.append(ICMExample(poor_input_text, poor_metadata))
     
     return icm_examples
 
