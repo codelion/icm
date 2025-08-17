@@ -269,12 +269,12 @@ def _load_huggingface_dataset(dataset_name: str, split: str, config: Optional[st
             # Try with default split for this dataset
             default_split = _get_default_split(dataset_name, config)
             if default_split != original_split:
-                logger.info(f"Split '{original_split}' not found, trying default split '{default_split}' for {dataset_name}")
+                logger.info(f"Split '{original_split}' not found, trying default split '{default_split}' for {actual_dataset_name}")
                 try:
                     if config:
-                        dataset = hf_load_dataset(dataset_name, config, split=default_split)
+                        dataset = hf_load_dataset(actual_dataset_name, config, split=default_split, trust_remote_code=trust_remote)
                     else:
-                        dataset = hf_load_dataset(dataset_name, split=default_split)
+                        dataset = hf_load_dataset(actual_dataset_name, split=default_split, trust_remote_code=trust_remote)
                     return list(dataset)
                 except Exception as e2:
                     logger.warning(f"Failed with default split {default_split}: {e2}")
