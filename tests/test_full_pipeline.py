@@ -43,7 +43,7 @@ def main():
     # Benchmark datasets to test
     benchmarks = [
         ("Rowan/hellaswag", "hellaswag"),
-        ("ybisk/piqa", "piqa"),  # Updated to use correct PIQA dataset
+        ("piqa", "piqa"),
         ("allenai/ai2_arc", "arc_challenge"),
         ("allenai/winogrande", "winogrande"),
         ("truthful_qa", "truthfulqa"),

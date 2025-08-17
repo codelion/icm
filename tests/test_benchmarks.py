@@ -47,7 +47,7 @@ def main():
     datasets_to_test = [
         # Dataset name, task_type, config
         ("Rowan/hellaswag", "hellaswag", None),
-        ("ybisk/piqa", "piqa", None),  # Updated to use correct PIQA dataset
+        ("piqa", "piqa", None),
         ("allenai/ai2_arc", "arc_challenge", "ARC-Challenge"),
         ("allenai/winogrande", "winogrande", "winogrande_xl"),
         ("truthful_qa", "truthfulqa", "multiple_choice"),  # Existing

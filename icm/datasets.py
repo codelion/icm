@@ -232,34 +232,20 @@ def _load_huggingface_dataset(dataset_name: str, split: str, config: Optional[st
     """Load dataset from Hugging Face."""
     logger = logging.getLogger(__name__)
     
-    # Special handling for datasets with issues
-    dataset_name_mappings = {
-        "piqa": "ybisk/piqa",  # Use the official PIQA dataset
-    }
-    
-    # Use mapped name if available
-    actual_dataset_name = dataset_name_mappings.get(dataset_name.lower(), dataset_name)
-    if actual_dataset_name != dataset_name:
-        logger.info(f"Using mapped dataset: {dataset_name} -> {actual_dataset_name}")
-    
-    # Some datasets require trust_remote_code
-    trust_remote_datasets = ["piqa", "ybisk/piqa"]
-    trust_remote = any(d in actual_dataset_name.lower() for d in trust_remote_datasets)
-    
     # Auto-detect config if not provided
     if config is None:
-        config = _get_default_config(actual_dataset_name)
+        config = _get_default_config(dataset_name)
         if config:
-            logger.info(f"Auto-detected config '{config}' for {actual_dataset_name}")
+            logger.info(f"Auto-detected config '{config}' for {dataset_name}")
     
     # Auto-detect split if the requested split doesn't exist
     original_split = split
     
     try:
         if config:
-            dataset = hf_load_dataset(actual_dataset_name, config, split=split, trust_remote_code=trust_remote)
+            dataset = hf_load_dataset(dataset_name, config, split=split)
         else:
-            dataset = hf_load_dataset(actual_dataset_name, split=split, trust_remote_code=trust_remote)
+            dataset = hf_load_dataset(dataset_name, split=split)
         return list(dataset)
     except Exception as e:
         error_msg = str(e)
@@ -269,12 +255,12 @@ def _load_huggingface_dataset(dataset_name: str, split: str, config: Optional[st
             # Try with default split for this dataset
             default_split = _get_default_split(dataset_name, config)
             if default_split != original_split:
-                logger.info(f"Split '{original_split}' not found, trying default split '{default_split}' for {actual_dataset_name}")
+                logger.info(f"Split '{original_split}' not found, trying default split '{default_split}' for {dataset_name}")
                 try:
                     if config:
-                        dataset = hf_load_dataset(actual_dataset_name, config, split=default_split, trust_remote_code=trust_remote)
+                        dataset = hf_load_dataset(dataset_name, config, split=default_split)
                     else:
-                        dataset = hf_load_dataset(actual_dataset_name, split=default_split, trust_remote_code=trust_remote)
+                        dataset = hf_load_dataset(dataset_name, split=default_split)
                     return list(dataset)
                 except Exception as e2:
                     logger.warning(f"Failed with default split {default_split}: {e2}")
@@ -282,27 +268,27 @@ def _load_huggingface_dataset(dataset_name: str, split: str, config: Optional[st
         # Check if this is a missing config error
         elif "Config name is missing" in error_msg or "available configs" in error_msg:
             # Try to auto-detect appropriate config for known datasets
-            auto_config = _get_default_config(actual_dataset_name)
+            auto_config = _get_default_config(dataset_name)
             if auto_config and auto_config != config:  # Only try if different from what we already tried
-                logger.info(f"Auto-detected config '{auto_config}' for {actual_dataset_name}")
+                logger.info(f"Auto-detected config '{auto_config}' for {dataset_name}")
                 try:
-                    dataset = hf_load_dataset(actual_dataset_name, auto_config, split=split, trust_remote_code=trust_remote)
+                    dataset = hf_load_dataset(dataset_name, auto_config, split=split)
                     return list(dataset)
                 except Exception as e2:
                     # Also try with default split
-                    default_split = _get_default_split(actual_dataset_name, auto_config)
+                    default_split = _get_default_split(dataset_name, auto_config)
                     if default_split != split:
                         logger.info(f"Also trying default split '{default_split}'")
                         try:
-                            dataset = hf_load_dataset(actual_dataset_name, auto_config, split=default_split, trust_remote_code=trust_remote)
+                            dataset = hf_load_dataset(dataset_name, auto_config, split=default_split)
                             return list(dataset)
                         except Exception as e3:
                             logger.warning(f"Failed with auto-config {auto_config} and split {default_split}: {e3}")
             
             # Provide helpful error message
-            raise ValueError(f"Dataset {actual_dataset_name} requires a config parameter. {error_msg}")
+            raise ValueError(f"Dataset {dataset_name} requires a config parameter. {error_msg}")
         
-        raise ValueError(f"Failed to load dataset {actual_dataset_name}: {e}")
+        raise ValueError(f"Failed to load dataset {dataset_name}: {e}")
 
 
 def _detect_task_type(examples: List[Dict[str, Any]], dataset_name: str) -> str:
