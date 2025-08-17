@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-Test the full ICM pipeline with all benchmarks using Gemma 3 270M-IT.
+Test the full ICM pipeline with all 6 Google-reported benchmarks using Gemma 3 270M-IT.
+Benchmarks: HellaSwag, PIQA, ARC-Challenge, WinoGrande, BIG-Bench Hard, IFEval
+Plus bonus: TruthfulQA, GSM8K
 Tests 1 sample from each benchmark, runs ICM, and combines into DPO dataset.
 """
 
@@ -40,14 +42,18 @@ def main():
     # Model to use
     model = "google/gemma-3-270m-it"
     
-    # Benchmark datasets to test
+    # Benchmark datasets to test - all 6 from Google's report plus bonuses
     benchmarks = [
-        ("Rowan/hellaswag", "hellaswag"),
-        ("piqa", "piqa"),
-        ("allenai/ai2_arc", "arc_challenge"),
-        ("allenai/winogrande", "winogrande"),
-        ("truthful_qa", "truthfulqa"),
-        ("gsm8k", "gsm8k"),
+        # Google's 6 benchmarks
+        ("Rowan/hellaswag", "hellaswag", None),          # HellaSwag: 37.7%
+        ("piqa", "piqa", None),                          # PIQA: 66.2%
+        ("allenai/ai2_arc", "arc_challenge", "ARC-Challenge"),  # ARC-c: 28.2%
+        ("allenai/winogrande", "winogrande", "winogrande_xl"),  # WinoGrande: 52.3%
+        ("maveriq/bigbenchhard", "bigbench_hard", None), # BIG-Bench Hard: 26.7%
+        ("google/IFEval", "ifeval", None),               # IFEval: 51.2%
+        # Bonus datasets
+        ("truthful_qa", "truthfulqa", "multiple_choice"),
+        ("gsm8k", "gsm8k", "main"),
     ]
     
     # Clean up any existing results
@@ -56,7 +62,11 @@ def main():
         run_command(["python", "-m", "icm.cli", "clean", "--keep-latest", "0"], "Clean old results")
     
     # Run ICM on each benchmark with 1 sample
-    for dataset_name, task_type in benchmarks:
+    for dataset_info in benchmarks:
+        dataset_name = dataset_info[0]
+        task_type = dataset_info[1]
+        config = dataset_info[2] if len(dataset_info) > 2 else None
+        
         cmd = [
             "python", "-m", "icm.cli", "run",
             "--model", model,
@@ -66,6 +76,10 @@ def main():
             "--max-iterations", "50",  # Fewer iterations for testing
             "--log-level", "INFO"
         ]
+        
+        # Add config if specified
+        if config:
+            cmd.extend(["--config", config])
         
         success = run_command(cmd, f"ICM on {dataset_name}")
         if not success:
