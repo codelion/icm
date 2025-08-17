@@ -49,7 +49,7 @@ def main():
         ("piqa", "piqa", None),                          # PIQA: 66.2%
         ("allenai/ai2_arc", "arc_challenge", "ARC-Challenge"),  # ARC-c: 28.2%
         ("allenai/winogrande", "winogrande", "winogrande_xl"),  # WinoGrande: 52.3%
-        ("maveriq/bigbenchhard", "bigbench_hard", None), # BIG-Bench Hard: 26.7%
+        ("maveriq/bigbenchhard", "bigbench_hard", "causal_judgement"), # BIG-Bench Hard: 26.7%
         ("google/IFEval", "ifeval", None),               # IFEval: 51.2%
         # Bonus datasets
         ("truthful_qa", "truthfulqa", "multiple_choice"),
