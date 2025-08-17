@@ -232,20 +232,34 @@ def _load_huggingface_dataset(dataset_name: str, split: str, config: Optional[st
     """Load dataset from Hugging Face."""
     logger = logging.getLogger(__name__)
     
+    # Special handling for datasets with issues
+    dataset_name_mappings = {
+        "piqa": "ybisk/piqa",  # Use the official PIQA dataset
+    }
+    
+    # Use mapped name if available
+    actual_dataset_name = dataset_name_mappings.get(dataset_name.lower(), dataset_name)
+    if actual_dataset_name != dataset_name:
+        logger.info(f"Using mapped dataset: {dataset_name} -> {actual_dataset_name}")
+    
+    # Some datasets require trust_remote_code
+    trust_remote_datasets = ["piqa", "ybisk/piqa"]
+    trust_remote = any(d in actual_dataset_name.lower() for d in trust_remote_datasets)
+    
     # Auto-detect config if not provided
     if config is None:
-        config = _get_default_config(dataset_name)
+        config = _get_default_config(actual_dataset_name)
         if config:
-            logger.info(f"Auto-detected config '{config}' for {dataset_name}")
+            logger.info(f"Auto-detected config '{config}' for {actual_dataset_name}")
     
     # Auto-detect split if the requested split doesn't exist
     original_split = split
     
     try:
         if config:
-            dataset = hf_load_dataset(dataset_name, config, split=split)
+            dataset = hf_load_dataset(actual_dataset_name, config, split=split, trust_remote_code=trust_remote)
         else:
-            dataset = hf_load_dataset(dataset_name, split=split)
+            dataset = hf_load_dataset(actual_dataset_name, split=split, trust_remote_code=trust_remote)
         return list(dataset)
     except Exception as e:
         error_msg = str(e)
