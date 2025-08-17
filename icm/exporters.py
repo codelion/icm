@@ -471,8 +471,8 @@ def combine_icm_results_to_dpo(
             logger.warning(f"Could not load {result_file}, skipping")
             continue
         
-        labeled_examples = result.get("labeled_examples", [])
-        dataset_name = result.get("dataset", "unknown")
+        labeled_examples = result.labeled_examples
+        dataset_name = result.metadata.get("dataset", "unknown")
         
         # Track source dataset counts
         dataset_sources[dataset_name] = dataset_sources.get(dataset_name, 0) + len(labeled_examples)
