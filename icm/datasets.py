@@ -218,7 +218,8 @@ def _get_default_split(dataset_name: str, config: Optional[str] = None) -> str:
         "allenai/ai2_arc": "test",
         "arc": "test",
         "winogrande": "validation",  # WinoGrande uses validation
-        "bigbench": "default",  # BIG-Bench Hard uses default split
+        "bigbench": "train",  # BIG-Bench Hard uses train split
+        "maveriq/bigbenchhard": "train",  # Full BigBench Hard dataset name
     }
     
     for dataset_key, default_split in dataset_splits.items():
