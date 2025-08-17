@@ -16,7 +16,7 @@ from pathlib import Path
 from .core import ICMSearcher, ICMResult
 from .datasets import load_icm_dataset, create_synthetic_dataset
 from .storage import ICMStorage
-from .exporters import ICMExporter, push_to_huggingface
+from .exporters import ICMExporter, push_to_huggingface, combine_icm_results_to_dpo
 from .consistency import LogicalConsistencyChecker
 
 
@@ -337,6 +337,57 @@ def clean_results(args):
     logger.info("Cleanup completed")
 
 
+def export_combined(args):
+    """Combine multiple ICM results into a single DPO dataset."""
+    setup_logging(args.log_level, args.log_file)
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Find ICM result files in the input directory
+        input_dir = Path(args.input_dir)
+        if not input_dir.exists():
+            raise ValueError(f"Input directory does not exist: {args.input_dir}")
+        
+        # Get all .jsonl files in the directory
+        result_files = list(input_dir.glob("*.jsonl"))
+        
+        if not result_files:
+            raise ValueError(f"No .jsonl files found in {args.input_dir}")
+        
+        logger.info(f"Found {len(result_files)} result files:")
+        for file in result_files:
+            logger.info(f"  - {file.name}")
+        
+        # Create combined DPO dataset
+        storage = ICMStorage()
+        output_path = combine_icm_results_to_dpo(
+            result_files=[str(f) for f in result_files],
+            output_path=args.output_path,
+            storage=storage
+        )
+        
+        logger.info(f"Combined DPO dataset created: {output_path}")
+        
+        # Push to HF if requested
+        if args.hf_push:
+            if not args.hf_repo_id:
+                raise ValueError("--hf-repo-id is required when using --hf-push")
+            
+            url = push_to_huggingface(
+                file_path=output_path,
+                repo_id=args.hf_repo_id,
+                private=args.private
+            )
+            logger.info(f"Pushed to Hugging Face: {url}")
+    
+    except Exception as e:
+        logger.error(f"Error combining results: {e}")
+        if args.log_level == "DEBUG":
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
+
+
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
@@ -349,7 +400,8 @@ def parse_args():
     run_parser.add_argument("--model", type=str, required=True, help="Model name or path")
     run_parser.add_argument("--dataset", type=str, help="Dataset name or path")
     run_parser.add_argument("--task-type", type=str, default="auto", 
-                           choices=["auto", "classification", "comparison", "truthfulqa", "gsm8k"],
+                           choices=["auto", "classification", "comparison", "truthfulqa", "gsm8k",
+                                   "hellaswag", "piqa", "arc_challenge", "winogrande", "bigbench_hard", "ifeval"],
                            help="Task type")
     run_parser.add_argument("--split", type=str, default="train", help="Dataset split")
     run_parser.add_argument("--config", type=str, default=None, help="Dataset configuration (e.g., 'multiple_choice' for truthful_qa)")
@@ -437,6 +489,17 @@ def parse_args():
                              choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Log level")
     clean_parser.add_argument("--log-file", type=str, default=None, help="Log file path")
     
+    # Export-combined subcommand
+    export_combined_parser = subparsers.add_parser("export-combined", help="Combine multiple ICM results into single DPO dataset")
+    export_combined_parser.add_argument("--input-dir", type=str, default="icm_results", help="Directory containing ICM result files")
+    export_combined_parser.add_argument("--output-path", type=str, required=True, help="Output path for combined DPO dataset")
+    export_combined_parser.add_argument("--hf-push", action="store_true", help="Push to Hugging Face")
+    export_combined_parser.add_argument("--hf-repo-id", type=str, help="HF repository ID")
+    export_combined_parser.add_argument("--private", action="store_true", help="Make HF repo private")
+    export_combined_parser.add_argument("--log-level", type=str, default="INFO", 
+                                       choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Log level")
+    export_combined_parser.add_argument("--log-file", type=str, default=None, help="Log file path")
+    
     return parser.parse_args()
 
 
@@ -448,6 +511,8 @@ def main():
         run_icm(args)
     elif args.command == "export":
         export_results(args)
+    elif args.command == "export-combined":
+        export_combined(args)
     elif args.command == "push":
         push_to_hf(args)
     elif args.command == "list":
@@ -457,7 +522,7 @@ def main():
     elif args.command == "clean":
         clean_results(args)
     else:
-        print("Please specify a command: run, export, push, list, analyze, or clean")
+        print("Please specify a command: run, export, export-combined, push, list, analyze, or clean")
         print("Use 'icm --help' for more information")
         sys.exit(1)
 
