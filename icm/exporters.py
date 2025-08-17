@@ -465,7 +465,7 @@ def combine_icm_results_to_dpo(
         logger.info(f"Loading ICM results from {result_file}")
         
         # Load the ICM result
-        result = storage.load(result_file)
+        result = storage.load_result(result_file)
         
         if not result:
             logger.warning(f"Could not load {result_file}, skipping")
