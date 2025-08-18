@@ -641,9 +641,13 @@ class ICMSearcher:
                 except:
                     pass
             
-            # Get maximum logit for each category
-            true_logit = max([logits[tid].item() for tid in true_tokens]) if true_tokens else -float('inf')
-            false_logit = max([logits[tid].item() for tid in false_tokens]) if false_tokens else -float('inf')
+            # Get maximum logit for each category with bounds checking
+            vocab_size = logits.size(-1)
+            valid_true_tokens = [tid for tid in true_tokens if 0 <= tid < vocab_size]
+            valid_false_tokens = [tid for tid in false_tokens if 0 <= tid < vocab_size]
+            
+            true_logit = max([logits[tid].item() for tid in valid_true_tokens]) if valid_true_tokens else -float('inf')
+            false_logit = max([logits[tid].item() for tid in valid_false_tokens]) if valid_false_tokens else -float('inf')
             
             # Apply softmax
             exp_true = math.exp(true_logit)

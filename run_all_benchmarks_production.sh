@@ -2,12 +2,24 @@
 # Optimized production script to run ICM on ALL benchmark configurations
 # Based on HuggingFace blog analysis with optimal parameters for maximum quality
 
+# Enable CUDA debugging for better error reporting
+export CUDA_LAUNCH_BLOCKING=1
+
 MODEL="google/gemma-3-270m-it"
 
 echo "🚀 Running OPTIMIZED ICM on ALL benchmark configurations for production..."
 echo "Model: $MODEL"
 echo "Total configurations: 41"
 echo "Optimization: alpha=50.0, temp=8.0→0.001, gen_temp=0.3, K=50, iter=500"
+echo "CUDA debugging: CUDA_LAUNCH_BLOCKING=1 enabled"
+
+# Check if we should force CPU mode for debugging
+if [ "$1" = "--cpu" ]; then
+    echo "⚠️  Forcing CPU mode for debugging"
+    DEVICE_ARG="--device cpu"
+else
+    DEVICE_ARG=""
+fi
 
 # Clean previous results (optional)
 # python -m icm.cli clean --keep-latest 0
@@ -22,7 +34,9 @@ python -m icm.cli run --model $MODEL \
     --generation-temperature 0.3 \
     --initial-examples 50 \
     --max-examples 1000 \
-    --max-iterations 500
+    --max-iterations 500 \
+    $DEVICE_ARG \
+    $DEVICE_ARG
 
 echo ""
 echo "2/8: PIQA (1 config)..."
@@ -34,7 +48,8 @@ python -m icm.cli run --model $MODEL \
     --generation-temperature 0.3 \
     --initial-examples 50 \
     --max-examples 1000 \
-    --max-iterations 500
+    --max-iterations 500 \
+    $DEVICE_ARG
 
 echo ""
 echo "3/8: ARC - Both configs (2 total)..."
@@ -48,7 +63,8 @@ python -m icm.cli run --model $MODEL \
     --generation-temperature 0.3 \
     --initial-examples 50 \
     --max-examples 800 \
-    --max-iterations 500
+    --max-iterations 500 \
+    $DEVICE_ARG
 
 echo "  ARC-Easy..."
 python -m icm.cli run --model $MODEL \
@@ -60,7 +76,8 @@ python -m icm.cli run --model $MODEL \
     --generation-temperature 0.3 \
     --initial-examples 50 \
     --max-examples 800 \
-    --max-iterations 500
+    --max-iterations 500 \
+    $DEVICE_ARG
 
 echo ""
 echo "4/8: WinoGrande - All 5 size configs..."
@@ -75,7 +92,8 @@ for size in winogrande_xs winogrande_s winogrande_m winogrande_l winogrande_xl; 
         --generation-temperature 0.3 \
         --initial-examples 50 \
         --max-examples 600 \
-        --max-iterations 500
+        --max-iterations 500 \
+    $DEVICE_ARG
 done
 
 echo ""
@@ -122,7 +140,8 @@ for task in "${BBH_TASKS[@]}"; do
         --generation-temperature 0.3 \
         --initial-examples 50 \
         --max-examples 200 \
-        --max-iterations 500
+        --max-iterations 500 \
+    $DEVICE_ARG
     ((task_count++))
 done
 
@@ -136,7 +155,8 @@ python -m icm.cli run --model $MODEL \
     --generation-temperature 0.3 \
     --initial-examples 50 \
     --max-examples 500 \
-    --max-iterations 500
+    --max-iterations 500 \
+    $DEVICE_ARG
 
 echo ""
 echo "7/8: TruthfulQA - Both configs (2 total)..."
@@ -150,7 +170,8 @@ python -m icm.cli run --model $MODEL \
     --generation-temperature 0.3 \
     --initial-examples 50 \
     --max-examples 400 \
-    --max-iterations 500
+    --max-iterations 500 \
+    $DEVICE_ARG
 
 echo "  TruthfulQA generation..."
 python -m icm.cli run --model $MODEL \
@@ -162,7 +183,8 @@ python -m icm.cli run --model $MODEL \
     --generation-temperature 0.3 \
     --initial-examples 50 \
     --max-examples 400 \
-    --max-iterations 500
+    --max-iterations 500 \
+    $DEVICE_ARG
 
 echo ""
 echo "8/8: GSM8K - Both configs (2 total)..."
@@ -176,7 +198,8 @@ python -m icm.cli run --model $MODEL \
     --generation-temperature 0.3 \
     --initial-examples 50 \
     --max-examples 600 \
-    --max-iterations 500
+    --max-iterations 500 \
+    $DEVICE_ARG
 
 echo "  GSM8K socratic..."
 python -m icm.cli run --model $MODEL \
@@ -188,7 +211,8 @@ python -m icm.cli run --model $MODEL \
     --generation-temperature 0.3 \
     --initial-examples 50 \
     --max-examples 600 \
-    --max-iterations 500
+    --max-iterations 500 \
+    $DEVICE_ARG
 
 echo ""
 echo "🔗 Combining all results into DPO dataset..."
