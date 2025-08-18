@@ -2,8 +2,8 @@
 # Optimized production script to run ICM on ALL benchmark configurations
 # Based on HuggingFace blog analysis with optimal parameters for maximum quality
 
-# Enable CUDA debugging for better error reporting
-export CUDA_LAUNCH_BLOCKING=1
+# Enable this for debugging CUDA errors if needed
+# export CUDA_LAUNCH_BLOCKING=1
 
 MODEL="google/gemma-3-270m-it"
 
@@ -11,7 +11,6 @@ echo "🚀 Running OPTIMIZED ICM on ALL benchmark configurations for production.
 echo "Model: $MODEL"
 echo "Total configurations: 41"
 echo "Optimization: alpha=50.0, temp=8.0→0.001, gen_temp=0.3, K=50, iter=500"
-echo "CUDA debugging: CUDA_LAUNCH_BLOCKING=1 enabled"
 
 # Check if we should force CPU mode for debugging
 if [ "$1" = "--cpu" ]; then
