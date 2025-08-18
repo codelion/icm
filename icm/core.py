@@ -129,6 +129,12 @@ class ICMSearcher:
             torch.backends.cudnn.benchmark = True
             torch.backends.cudnn.deterministic = False
             torch.cuda.empty_cache()
+            
+            # Enable TensorFloat-32 for better performance on Ampere+ GPUs
+            if torch.cuda.get_device_capability()[0] >= 8:  # Ampere (A100, RTX 30xx) or newer
+                torch.set_float32_matmul_precision('high')
+                self.logger.info("Enabled TensorFloat-32 (TF32) for improved performance")
+            
             self.logger.info("Applied CUDA optimizations")
         
         # Load model and tokenizer
