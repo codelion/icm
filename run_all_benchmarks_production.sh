@@ -10,11 +10,11 @@ echo "Total configurations: 41"
 echo "Optimization: alpha=50.0, temp=8.0→0.001, gen_temp=0.3, K=50, iter=500"
 
 # Clean previous results (optional)
-# icm clean --keep-latest 0
+# python -m icm.cli clean --keep-latest 0
 
 echo ""
 echo "1/8: HellaSwag (1 config)..."
-icm run --model $MODEL \
+python -m icm.cli run --model $MODEL \
     --dataset Rowan/hellaswag \
     --task-type hellaswag \
     --alpha 50.0 \
@@ -26,7 +26,7 @@ icm run --model $MODEL \
 
 echo ""
 echo "2/8: PIQA (1 config)..."
-icm run --model $MODEL \
+python -m icm.cli run --model $MODEL \
     --dataset piqa \
     --task-type piqa \
     --alpha 50.0 \
@@ -39,7 +39,7 @@ icm run --model $MODEL \
 echo ""
 echo "3/8: ARC - Both configs (2 total)..."
 echo "  ARC-Challenge..."
-icm run --model $MODEL \
+python -m icm.cli run --model $MODEL \
     --dataset allenai/ai2_arc \
     --task-type arc_challenge \
     --config ARC-Challenge \
@@ -51,7 +51,7 @@ icm run --model $MODEL \
     --max-iterations 500
 
 echo "  ARC-Easy..."
-icm run --model $MODEL \
+python -m icm.cli run --model $MODEL \
     --dataset allenai/ai2_arc \
     --task-type arc_challenge \
     --config ARC-Easy \
@@ -66,7 +66,7 @@ echo ""
 echo "4/8: WinoGrande - All 5 size configs..."
 for size in winogrande_xs winogrande_s winogrande_m winogrande_l winogrande_xl; do
     echo "  WinoGrande $size..."
-    icm run --model $MODEL \
+    python -m icm.cli run --model $MODEL \
         --dataset allenai/winogrande \
         --task-type winogrande \
         --config $size \
@@ -113,7 +113,7 @@ BBH_TASKS=(
 task_count=1
 for task in "${BBH_TASKS[@]}"; do
     echo "  BBH ($task_count/27): $task..."
-    icm run --model $MODEL \
+    python -m icm.cli run --model $MODEL \
         --dataset maveriq/bigbenchhard \
         --config $task \
         --task-type bigbench_hard \
@@ -128,7 +128,7 @@ done
 
 echo ""
 echo "6/8: IFEval (1 config)..."
-icm run --model $MODEL \
+python -m icm.cli run --model $MODEL \
     --dataset google/IFEval \
     --task-type ifeval \
     --alpha 50.0 \
@@ -141,7 +141,7 @@ icm run --model $MODEL \
 echo ""
 echo "7/8: TruthfulQA - Both configs (2 total)..."
 echo "  TruthfulQA multiple_choice..."
-icm run --model $MODEL \
+python -m icm.cli run --model $MODEL \
     --dataset truthful_qa \
     --task-type truthfulqa \
     --config multiple_choice \
@@ -153,7 +153,7 @@ icm run --model $MODEL \
     --max-iterations 500
 
 echo "  TruthfulQA generation..."
-icm run --model $MODEL \
+python -m icm.cli run --model $MODEL \
     --dataset truthful_qa \
     --task-type truthfulqa \
     --config generation \
@@ -167,7 +167,7 @@ icm run --model $MODEL \
 echo ""
 echo "8/8: GSM8K - Both configs (2 total)..."
 echo "  GSM8K main..."
-icm run --model $MODEL \
+python -m icm.cli run --model $MODEL \
     --dataset gsm8k \
     --task-type gsm8k \
     --config main \
@@ -179,7 +179,7 @@ icm run --model $MODEL \
     --max-iterations 500
 
 echo "  GSM8K socratic..."
-icm run --model $MODEL \
+python -m icm.cli run --model $MODEL \
     --dataset gsm8k \
     --task-type gsm8k \
     --config socratic \
@@ -192,7 +192,7 @@ icm run --model $MODEL \
 
 echo ""
 echo "🔗 Combining all results into DPO dataset..."
-icm export-combined \
+python -m icm.cli export-combined \
     --input-dir icm_results \
     --output-path gemma3_complete_all_configs_dpo.jsonl
 
