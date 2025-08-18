@@ -147,15 +147,36 @@ class ICMSearcher:
         model_kwargs = {}
         if self.device == "cuda":
             model_kwargs["torch_dtype"] = torch.float16
-            # Don't use device_map for Gemma 270M - it's small enough for single GPU
-            # device_map="auto" causes issues with tensor device placement
-            # Only use device_map for models that truly need multi-GPU (7B+)
+            
+            # Only use device_map for large models that need multi-GPU
+            # Check model size from config to decide
+            from transformers import AutoConfig
+            config = AutoConfig.from_pretrained(model_name)
+            
+            # Estimate model size: params = hidden_size * layers * 4 (rough estimate)
+            # Models under 1B params can typically fit on a single GPU
+            estimated_params = getattr(config, 'num_parameters', None)
+            
+            if estimated_params is None:
+                # Estimate based on config attributes if num_parameters not available
+                hidden_size = getattr(config, 'hidden_size', 768)
+                num_layers = getattr(config, 'num_hidden_layers', 12)
+                estimated_params = hidden_size * num_layers * 4 * 1000  # Rough estimate
+            
+            # Only use device_map for models > 1B parameters
+            if estimated_params > 1_000_000_000:
+                model_kwargs["device_map"] = "auto"
+                self.logger.info(f"Using device_map='auto' for large model ({estimated_params:,} params)")
         elif self.device == "mps":
             model_kwargs["torch_dtype"] = torch.float16  # MPS supports float16
         else:  # CPU
             model_kwargs["torch_dtype"] = torch.float32
         
         self.model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
+        
+        # Get vocabulary size from model config
+        self.vocab_size = self.model.config.vocab_size
+        self.logger.info(f"Model vocabulary size: {self.vocab_size}")
         
         # Move model to device if not using device_map
         if "device_map" not in model_kwargs:
@@ -644,9 +665,25 @@ class ICMSearcher:
                     pass
             
             # Get maximum logit for each category with bounds checking
-            vocab_size = logits.size(-1)
-            valid_true_tokens = [tid for tid in true_tokens if 0 <= tid < vocab_size]
-            valid_false_tokens = [tid for tid in false_tokens if 0 <= tid < vocab_size]
+            # Verify logits tensor matches expected vocabulary size
+            logits_vocab_size = logits.size(-1)
+            if logits_vocab_size != self.vocab_size:
+                self.logger.warning(f"Logits size {logits_vocab_size} doesn't match model vocab size {self.vocab_size}")
+
+            # Use the minimum of actual logits size and expected vocab size for safety
+            effective_vocab_size = min(logits_vocab_size, self.vocab_size)
+
+            # Filter tokens to ensure they're within valid range
+            valid_true_tokens = [tid for tid in true_tokens if 0 <= tid < effective_vocab_size]
+            valid_false_tokens = [tid for tid in false_tokens if 0 <= tid < effective_vocab_size]
+
+            # Debug logging if tokens are filtered
+            if len(true_tokens) > len(valid_true_tokens):
+                filtered = [t for t in true_tokens if t >= effective_vocab_size]
+                self.logger.debug(f"Filtered out-of-bounds true tokens: {filtered}")
+            if len(false_tokens) > len(valid_false_tokens):
+                filtered = [t for t in false_tokens if t >= effective_vocab_size]
+                self.logger.debug(f"Filtered out-of-bounds false tokens: {filtered}")
             
             # Convert Python integers to tensor indices on correct device for CUDA compatibility
             if valid_true_tokens:
