@@ -646,8 +646,19 @@ class ICMSearcher:
             valid_true_tokens = [tid for tid in true_tokens if 0 <= tid < vocab_size]
             valid_false_tokens = [tid for tid in false_tokens if 0 <= tid < vocab_size]
             
-            true_logit = max([logits[tid].item() for tid in valid_true_tokens]) if valid_true_tokens else -float('inf')
-            false_logit = max([logits[tid].item() for tid in valid_false_tokens]) if valid_false_tokens else -float('inf')
+            # Convert Python integers to tensor indices on correct device for CUDA compatibility
+            if valid_true_tokens:
+                # Convert to tensor on same device as logits for proper indexing
+                token_indices = torch.tensor(valid_true_tokens, device=logits.device, dtype=torch.long)
+                true_logit = logits[token_indices].max().item()
+            else:
+                true_logit = -float('inf')
+
+            if valid_false_tokens:
+                token_indices = torch.tensor(valid_false_tokens, device=logits.device, dtype=torch.long)
+                false_logit = logits[token_indices].max().item()
+            else:
+                false_logit = -float('inf')
             
             # Apply softmax
             exp_true = math.exp(true_logit)
