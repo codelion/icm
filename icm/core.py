@@ -146,12 +146,29 @@ class ICMSearcher:
         # Configure model loading based on device
         model_kwargs = {}
         if self.device == "cuda":
-            model_kwargs["torch_dtype"] = torch.float16
-            
             # Only use device_map for large models that need multi-GPU
             # Check model size from config to decide
             from transformers import AutoConfig
             config = AutoConfig.from_pretrained(model_name)
+            
+            # Use the dtype specified in model config if available
+            if hasattr(config, 'torch_dtype') and config.torch_dtype is not None:
+                # Model has a preferred dtype (e.g., bfloat16 for Gemma-3-270M)
+                if config.torch_dtype == torch.bfloat16:
+                    # Check if bfloat16 is supported
+                    if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
+                        model_kwargs["torch_dtype"] = torch.bfloat16
+                        self.logger.info(f"Using bfloat16 as specified by model config")
+                    else:
+                        # Fallback to float32 if bfloat16 not supported
+                        model_kwargs["torch_dtype"] = torch.float32
+                        self.logger.warning(f"Model prefers bfloat16 but it's not supported, using float32")
+                else:
+                    model_kwargs["torch_dtype"] = config.torch_dtype
+                    self.logger.info(f"Using {config.torch_dtype} as specified by model config")
+            else:
+                # Default to float16 for CUDA if no preference specified
+                model_kwargs["torch_dtype"] = torch.float16
             
             # Estimate model size: params = hidden_size * layers * 4 (rough estimate)
             # Models under 1B params can typically fit on a single GPU
