@@ -147,7 +147,9 @@ class ICMSearcher:
         model_kwargs = {}
         if self.device == "cuda":
             model_kwargs["torch_dtype"] = torch.float16
-            model_kwargs["device_map"] = "auto"
+            # Don't use device_map for Gemma 270M - it's small enough for single GPU
+            # device_map="auto" causes issues with tensor device placement
+            # Only use device_map for models that truly need multi-GPU (7B+)
         elif self.device == "mps":
             model_kwargs["torch_dtype"] = torch.float16  # MPS supports float16
         else:  # CPU
