@@ -226,7 +226,7 @@ if [ -f "gemma3_complete_all_configs_dpo.jsonl" ]; then
     echo "Total DPO preference pairs: $lines"
     echo "Expected range: 12,000-20,000 pairs (optimized parameters)"
     echo "Sample DPO pair:"
-    head -1 gemma3_complete_all_configs_dpo.jsonl | jq .
+    head -1 gemma3_complete_all_configs_dpo.jsonl | python -m json.tool
 fi
 
 echo ""

@@ -467,12 +467,39 @@ def combine_icm_results_to_dpo(
         # Load the ICM result
         result = storage.load_result(result_file)
         
-        if not result:
-            logger.warning(f"Could not load {result_file}, skipping")
-            continue
+        # Check if we got valid labeled examples
+        has_valid_result = (result and 
+                           hasattr(result, 'labeled_examples') and 
+                           len(result.labeled_examples) > 0)
         
-        labeled_examples = result.labeled_examples
-        dataset_name = result.metadata.get("dataset", "unknown")
+        if has_valid_result:
+            # Full ICM result with metadata
+            labeled_examples = result.labeled_examples
+            dataset_name = result.metadata.get("dataset", "unknown")
+        else:
+            # Try to load as raw labeled examples (current format)
+            try:
+                labeled_examples = []
+                with open(result_file, 'r') as f:
+                    for line in f:
+                        example = json.loads(line)
+                        # Raw examples don't have type field, just add them directly
+                        labeled_examples.append(example)
+                
+                # Extract dataset name from filename
+                import os
+                filename = os.path.basename(result_file)
+                # Extract dataset name (e.g., "hellaswag" from "hellaswag_gemma-3-270m-it_icm_20250818_065956.jsonl")
+                dataset_name = filename.split('_')[0]
+                
+                logger.info(f"Loaded {len(labeled_examples)} raw examples from {dataset_name}")
+            except Exception as e:
+                logger.warning(f"Could not load {result_file}: {e}, skipping")
+                continue
+        
+        if not labeled_examples:
+            logger.warning(f"No examples found in {result_file}, skipping")
+            continue
         
         # Track source dataset counts
         dataset_sources[dataset_name] = dataset_sources.get(dataset_name, 0) + len(labeled_examples)
@@ -508,9 +535,21 @@ def combine_icm_results_to_dpo(
             question_groups[question].append(ex)
         
         # Create DPO pairs from each question group
+        logger.info(f"Processing {len(question_groups)} question groups for dataset {dataset_name}")
+        
         for question, examples in question_groups.items():
             true_examples = [ex for ex in examples if ex["label"] == "True"]
             false_examples = [ex for ex in examples if ex["label"] == "False"]
+            
+            # Debug logging for pair creation
+            if len(true_examples) == 0 and len(false_examples) == 0:
+                logger.warning(f"Question '{question[:50]}...' has no valid examples")
+            elif len(true_examples) == 0:
+                logger.debug(f"Question '{question[:50]}...' has no True examples ({len(false_examples)} False)")
+            elif len(false_examples) == 0:
+                logger.debug(f"Question '{question[:50]}...' has no False examples ({len(true_examples)} True)")
+            else:
+                logger.debug(f"Question '{question[:50]}...' has {len(true_examples)} True and {len(false_examples)} False examples")
             
             # Create pairs
             for true_ex in true_examples:
