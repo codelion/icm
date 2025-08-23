@@ -191,7 +191,12 @@ class ICMSearcher:
                 model_kwargs["device_map"] = "auto"
                 self.logger.info(f"Using device_map='auto' for large model ({estimated_params:,} params)")
         elif self.device == "mps":
-            model_kwargs["torch_dtype"] = torch.float16  # MPS supports float16
+            # Special handling for Gemma models on MPS - they need fp32 to avoid NaN/inf errors
+            if "gemma" in model_name.lower():
+                model_kwargs["torch_dtype"] = torch.float32
+                self.logger.info("Using float32 for Gemma model on MPS to avoid numerical instability")
+            else:
+                model_kwargs["torch_dtype"] = torch.float16  # MPS supports float16 for other models
         else:  # CPU
             model_kwargs["torch_dtype"] = torch.float32
         
