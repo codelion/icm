@@ -461,6 +461,15 @@ def combine_icm_results_to_dpo(
     all_dpo_examples = []
     dataset_sources = {}
     
+    # Statistics tracking for filtered pairs
+    skipped_stats = {
+        "too_short": 0,
+        "identical": 0,
+        "hardcoded_42": 0,  # Should be 0 with our fix, kept as safety check
+        "missing_metadata": 0,
+        "total_processed": 0
+    }
+    
     for result_file in result_files:
         logger.info(f"Loading ICM results from {result_file}")
         
@@ -554,51 +563,81 @@ def combine_icm_results_to_dpo(
             # Create pairs
             for true_ex in true_examples:
                 for false_ex in false_examples:
-                    # Extract solutions/answers based on task type
+                    skipped_stats["total_processed"] += 1
+                    
+                    # Extract solutions/answers - USE RESPONSE_TEXT FIELD ONLY
                     task_type = true_ex.get("metadata", {}).get("task", "")
                     
-                    if task_type == "mathematical_correctness":
-                        preferred = true_ex.get("metadata", {}).get("solution", "")
-                        rejected = false_ex.get("metadata", {}).get("solution", "")
-                    elif task_type == "physical_reasoning":
-                        preferred = true_ex.get("metadata", {}).get("solution", "")
-                        rejected = false_ex.get("metadata", {}).get("solution", "")
-                    elif task_type == "common_sense_completion":
-                        preferred = true_ex.get("metadata", {}).get("ending", "")
-                        rejected = false_ex.get("metadata", {}).get("ending", "")
-                    elif task_type == "science_qa":
-                        preferred = true_ex.get("metadata", {}).get("answer", "")
-                        rejected = false_ex.get("metadata", {}).get("answer", "")
-                    elif task_type == "pronoun_resolution":
-                        preferred = true_ex.get("metadata", {}).get("filled_sentence", "")
-                        rejected = false_ex.get("metadata", {}).get("filled_sentence", "")
-                    else:
-                        # Generic extraction
-                        preferred = true_ex.get("metadata", {}).get("answer", 
-                                   true_ex.get("metadata", {}).get("solution", 
-                                   true_ex.get("metadata", {}).get("choice", "")))
-                        rejected = false_ex.get("metadata", {}).get("answer",
-                                  false_ex.get("metadata", {}).get("solution",
-                                  false_ex.get("metadata", {}).get("choice", "")))
+                    # STRICT EXTRACTION - NO FALLBACKS TO EMPTY STRINGS
+                    preferred = true_ex.get("metadata", {}).get("response_text")
+                    rejected = false_ex.get("metadata", {}).get("response_text")
                     
-                    if preferred and rejected:
-                        dpo_example = {
-                            "prompt": question,
-                            "chosen": preferred,
-                            "rejected": rejected,
-                            "source_dataset": dataset_name,
-                            "task_type": task_type
-                        }
-                        all_dpo_examples.append(dpo_example)
+                    # VALIDATION - SKIP PAIRS WITH ISSUES (DON'T FAIL)
+                    if not preferred or not rejected:
+                        skipped_stats["missing_metadata"] += 1
+                        logger.debug(f"Skipping pair with missing response_text for task '{task_type}': "
+                                   f"preferred={'✓' if preferred else '✗'}, rejected={'✓' if rejected else '✗'}")
+                        continue
+                    
+                    # Check response length - SKIP if too short
+                    if len(preferred) < 50 or len(rejected) < 50:
+                        skipped_stats["too_short"] += 1
+                        logger.debug(f"Skipping short response pair for task '{task_type}': "
+                                   f"chosen={len(preferred)} chars, rejected={len(rejected)} chars")
+                        continue
+                    
+                    # Check for identical responses - SKIP if same
+                    if preferred == rejected:
+                        skipped_stats["identical"] += 1
+                        logger.debug(f"Skipping identical pair for task '{task_type}': "
+                                   f"'{preferred[:50]}...'")
+                        continue
+                    
+                    # Safety check - should never trigger with our fix
+                    if "The answer is 42" in preferred or "The answer is 42" in rejected:
+                        skipped_stats["hardcoded_42"] += 1
+                        logger.warning(f"UNEXPECTED: Found hardcoded 'answer is 42' for task '{task_type}' - this shouldn't happen!")
+                        logger.warning(f"  Chosen: '{preferred[:100]}...'")
+                        logger.warning(f"  Rejected: '{rejected[:100]}...'")
+                        continue
+                    
+                    # All validations passed - create DPO pair
+                    dpo_example = {
+                        "prompt": question,
+                        "chosen": preferred,
+                        "rejected": rejected,
+                        "source_dataset": dataset_name,
+                        "task_type": task_type
+                    }
+                    all_dpo_examples.append(dpo_example)
     
     # Write combined DPO dataset
     with open(output_path, 'w') as f:
         for example in all_dpo_examples:
             f.write(json.dumps(example) + '\n')
     
-    # Log summary
+    # Log comprehensive statistics
     logger.info(f"Combined DPO dataset created: {output_path}")
-    logger.info(f"Total DPO pairs: {len(all_dpo_examples)}")
+    logger.info(f"DPO Export Statistics:")
+    logger.info(f"  Total pairs processed: {skipped_stats['total_processed']}")
+    logger.info(f"  Valid pairs created: {len(all_dpo_examples)}")
+    logger.info(f"  Success rate: {100*len(all_dpo_examples)/max(skipped_stats['total_processed'], 1):.1f}%")
+    
+    # Log skipped pairs
+    total_skipped = sum(v for k, v in skipped_stats.items() if k != 'total_processed')
+    if total_skipped > 0:
+        logger.info(f"Skipped pairs breakdown:")
+        logger.info(f"  - Too short (<50 chars): {skipped_stats['too_short']} ({100*skipped_stats['too_short']/skipped_stats['total_processed']:.1f}%)")
+        logger.info(f"  - Identical responses: {skipped_stats['identical']} ({100*skipped_stats['identical']/skipped_stats['total_processed']:.1f}%)")
+        logger.info(f"  - Missing metadata: {skipped_stats['missing_metadata']} ({100*skipped_stats['missing_metadata']/skipped_stats['total_processed']:.1f}%)")
+        
+        if skipped_stats['hardcoded_42'] > 0:
+            logger.error(f"  - UNEXPECTED hardcoded '42': {skipped_stats['hardcoded_42']} (this indicates a bug in generation!)")
+        else:
+            logger.info(f"  - Hardcoded '42' responses: 0 ✓ (as expected after our fix)")
+    else:
+        logger.info("✅ No pairs were skipped - all generated pairs met quality standards!")
+    
     logger.info("Source datasets:")
     for dataset, count in dataset_sources.items():
         logger.info(f"  - {dataset}: {count} examples")

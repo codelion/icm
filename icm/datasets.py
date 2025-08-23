@@ -360,7 +360,8 @@ def _convert_truthfulqa(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                 metadata = {
                     "question": question,
                     "choice": choice,
-                    "task": "truthfulness"
+                    "task": "truthfulness",
+                    "response_text": f"Question: {question}\n\nAnswer: {choice}"
                     # No gold_label - ICM will determine this
                 }
                 icm_examples.append(ICMExample(input_text, metadata))
@@ -378,7 +379,8 @@ def _convert_truthfulqa(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                 metadata = {
                     "question": question,
                     "answer": answer,
-                    "task": "truthfulness"
+                    "task": "truthfulness",
+                    "response_text": f"Question: {question}\n\nAnswer: {answer}"
                     # No gold_label - ICM will determine this
                 }
                 icm_examples.append(ICMExample(input_text, metadata))
@@ -404,12 +406,61 @@ def _convert_gsm8k(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                 "question": question,
                 "solution": solution,
                 "original_solution": original_answer,  # Keep original for reference
-                "task": "mathematical_correctness"
+                "task": "mathematical_correctness",
+                "response_text": f"Question: {question}\n\nSolution: {solution}"
                 # No gold_label - ICM will determine this
             }
             icm_examples.append(ICMExample(input_text, metadata))
     
     return icm_examples
+
+
+def _generate_plausible_wrong_answer(problem: str, correct_answer: str) -> str:
+    """
+    Generate a plausible but incorrect answer for reasoning problems.
+    Avoids generic "The answer is 42" responses.
+    """
+    import re
+    
+    # Extract numbers from the correct answer
+    numbers = re.findall(r'\d+', correct_answer)
+    
+    if numbers:
+        # Strategy 1: Modify the last number (often the final answer)
+        wrong_answer = correct_answer
+        last_number = numbers[-1]
+        # Create off-by-one or doubled errors
+        try:
+            num_val = int(last_number)
+            if num_val < 10:
+                wrong_val = num_val + 1  # Off by one
+            else:
+                wrong_val = num_val + 10  # Add 10
+            wrong_answer = wrong_answer.replace(last_number, str(wrong_val), 1)
+        except ValueError:
+            wrong_answer = f"The answer is {int(last_number) // 2}"  # Half the number
+        
+        return wrong_answer
+    
+    # Strategy 2: For non-numeric answers, provide domain-specific wrong answers
+    if "true" in correct_answer.lower() or "false" in correct_answer.lower():
+        return "True" if "false" in correct_answer.lower() else "False"
+    
+    if any(letter in correct_answer.lower() for letter in ['(a)', '(b)', '(c)', '(d)']):
+        # Multiple choice - pick different option
+        options = ['(A)', '(B)', '(C)', '(D)']
+        for opt in options:
+            if opt.lower() not in correct_answer.lower():
+                return opt
+    
+    # Strategy 3: For text answers, provide plausible but incorrect alternatives
+    if len(correct_answer.split()) > 3:
+        # For longer answers, provide a shortened version
+        words = correct_answer.split()
+        return ' '.join(words[:len(words)//2]) + "."
+    
+    # Fallback: Still better than "42"
+    return f"This is incorrect: {correct_answer[:20]}..."
 
 
 def _generate_diverse_solutions(question: str, original_answer: str, num_solutions: int = 4) -> List[str]:
@@ -552,7 +603,8 @@ def _convert_classification(examples: List[Dict[str, Any]]) -> List[ICMExample]:
             metadata = {
                 "original_text": text,
                 "claim": claim,
-                "task": "classification"
+                "task": "classification",
+                "response_text": f"Text: {text}\n\nClassification: {claim}"
                 # No gold_label - ICM will determine this
             }
             icm_examples.append(ICMExample(input_text, metadata))
@@ -589,7 +641,8 @@ def _convert_comparison(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                 "response_a": response_a,
                 "response_b": response_b,
                 "claim": claim,
-                "task": "comparison"
+                "task": "comparison",
+                "response_text": f"Query: {query}\n\nResponse A: {response_a}\n\nResponse B: {response_b}\n\nComparison: {claim}"
                 # No gold_label - ICM will determine this
             }
             icm_examples.append(ICMExample(input_text, metadata))
@@ -622,7 +675,8 @@ def _convert_hellaswag(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                 "ending_index": i,
                 "activity_label": activity_label,
                 "claim": claim,
-                "task": "common_sense_completion"
+                "task": "common_sense_completion",
+                "response_text": f"Context: {ctx}\n\nEnding: {ending}"
             }
             icm_examples.append(ICMExample(input_text, metadata))
             
@@ -636,7 +690,8 @@ def _convert_hellaswag(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                 "ending_index": i,
                 "activity_label": activity_label,
                 "claim": alt_claim,
-                "task": "common_sense_completion"
+                "task": "common_sense_completion",
+                "response_text": f"Context: {ctx}\n\nEnding: {ending}"
             }
             icm_examples.append(ICMExample(alt_input_text, alt_metadata))
     
@@ -664,7 +719,8 @@ def _convert_piqa(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                 "solution": solution,
                 "solution_index": i,
                 "claim": claim,
-                "task": "physical_reasoning"
+                "task": "physical_reasoning",
+                "response_text": f"Goal: {goal}\n\nSolution: {solution}"
             }
             icm_examples.append(ICMExample(input_text, metadata))
             
@@ -677,7 +733,8 @@ def _convert_piqa(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                 "solution": solution,
                 "solution_index": i,
                 "claim": alt_claim,
-                "task": "physical_reasoning"
+                "task": "physical_reasoning",
+                "response_text": f"Goal: {goal}\n\nSolution: {solution}"
             }
             icm_examples.append(ICMExample(alt_input_text, alt_metadata))
     
@@ -707,7 +764,8 @@ def _convert_arc_challenge(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                 "answer_label": choice_label,
                 "answer_index": i,
                 "claim": claim,
-                "task": "science_qa"
+                "task": "science_qa",
+                "response_text": f"Question: {question}\n\nAnswer {choice_label}: {choice_text}"
             }
             icm_examples.append(ICMExample(input_text, metadata))
             
@@ -721,7 +779,8 @@ def _convert_arc_challenge(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                 "answer_label": choice_label,
                 "answer_index": i,
                 "claim": alt_claim,
-                "task": "science_qa"
+                "task": "science_qa",
+                "response_text": f"Question: {question}\n\nAnswer {choice_label}: {choice_text}"
             }
             icm_examples.append(ICMExample(alt_input_text, alt_metadata))
     
@@ -752,7 +811,8 @@ def _convert_winogrande(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                 "option_index": i,
                 "filled_sentence": filled_sentence,
                 "claim": claim,
-                "task": "pronoun_resolution"
+                "task": "pronoun_resolution",
+                "response_text": f"Sentence: {filled_sentence}"
             }
             icm_examples.append(ICMExample(input_text, metadata))
             
@@ -766,7 +826,8 @@ def _convert_winogrande(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                 "option_index": i,
                 "filled_sentence": filled_sentence,
                 "claim": alt_claim,
-                "task": "pronoun_resolution"
+                "task": "pronoun_resolution",
+                "response_text": f"Sentence: {filled_sentence}"
             }
             icm_examples.append(ICMExample(alt_input_text, alt_metadata))
     
@@ -795,7 +856,8 @@ def _convert_bigbench_hard(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                     "choice_index": i,
                     "target": target,
                     "claim": claim,
-                    "task": "reasoning"
+                    "task": "reasoning",
+                    "response_text": f"Problem: {input_text_raw}\n\nChoice {i+1}: {choice}"
                 }
                 icm_examples.append(ICMExample(input_text, metadata))
         else:
@@ -807,12 +869,13 @@ def _convert_bigbench_hard(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                 "problem": input_text_raw,
                 "answer": target,
                 "claim": claim,
-                "task": "reasoning"
+                "task": "reasoning",
+                "response_text": f"Problem: {input_text_raw}\n\nAnswer: {target}"
             }
             icm_examples.append(ICMExample(input_text, metadata))
             
-            # Add a contrasting incorrect answer
-            wrong_answer = "The answer is 42"  # Generic wrong answer
+            # Add a contrasting incorrect answer - GENERATE PLAUSIBLE WRONG ANSWER
+            wrong_answer = _generate_plausible_wrong_answer(input_text_raw, target)
             wrong_claim = f"This answer correctly solves the problem"
             wrong_input_text = f"Problem: {input_text_raw}\nAnswer: {wrong_answer}\nClaim: {wrong_claim}\nI think this Claim is [True/False]"
             
@@ -820,7 +883,8 @@ def _convert_bigbench_hard(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                 "problem": input_text_raw,
                 "answer": wrong_answer,
                 "claim": wrong_claim,
-                "task": "reasoning"
+                "task": "reasoning",
+                "response_text": f"Problem: {input_text_raw}\n\nAnswer: {wrong_answer}"
             }
             icm_examples.append(ICMExample(wrong_input_text, wrong_metadata))
     
@@ -847,7 +911,8 @@ def _convert_ifeval(examples: List[Dict[str, Any]]) -> List[ICMExample]:
             "instruction_ids": instruction_id_list,
             "kwargs": kwargs,
             "claim": claim,
-            "task": "instruction_following"
+            "task": "instruction_following",
+            "response_text": f"Instruction: {prompt}\n\nResponse: {response}"
         }
         icm_examples.append(ICMExample(input_text, metadata))
         
@@ -861,7 +926,8 @@ def _convert_ifeval(examples: List[Dict[str, Any]]) -> List[ICMExample]:
             "instruction_ids": instruction_id_list,
             "kwargs": kwargs,
             "claim": alt_claim,
-            "task": "instruction_following"
+            "task": "instruction_following",
+            "response_text": f"Instruction: {prompt}\n\nResponse: {response}"
         }
         icm_examples.append(ICMExample(alt_input_text, alt_metadata))
         
@@ -876,7 +942,8 @@ def _convert_ifeval(examples: List[Dict[str, Any]]) -> List[ICMExample]:
             "instruction_ids": instruction_id_list,
             "kwargs": kwargs,
             "claim": poor_claim,
-            "task": "instruction_following"
+            "task": "instruction_following",
+            "response_text": f"Instruction: {prompt}\n\nResponse: {poor_response}"
         }
         icm_examples.append(ICMExample(poor_input_text, poor_metadata))
     
@@ -937,6 +1004,13 @@ def create_synthetic_dataset(
             
             for claim in claims:
                 input_text = f"Query: {query}\nResponse A: {a}\nResponse B: {b}\nClaim: {claim}\nI think this Claim is [True/False]"
-                examples.append(ICMExample(input_text, {"query": query, "response_a": str(a), "response_b": str(b), "claim": claim, "task": "comparison"}))
+                examples.append(ICMExample(input_text, {
+                    "query": query, 
+                    "response_a": str(a), 
+                    "response_b": str(b), 
+                    "claim": claim, 
+                    "task": "comparison",
+                    "response_text": f"Query: {query}\n\nResponse A: {str(a)}\n\nResponse B: {str(b)}\n\nComparison: {claim}"
+                }))
     
     return ICMDataset(examples, {"task_type": task_type, "synthetic": True})
