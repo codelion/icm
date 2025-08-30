@@ -354,16 +354,26 @@ def export_combined(args):
         if not result_files:
             raise ValueError(f"No .jsonl files found in {args.input_dir}")
         
-        logger.info(f"Found {len(result_files)} result files:")
-        for file in result_files:
-            logger.info(f"  - {file.name}")
+        logger.info(f"Found {len(result_files)} total result files")
+        
+        # Select best quality files if enabled
+        if getattr(args, 'quality_selection', True):  # Default to True for better results
+            from .exporters import select_best_icm_files
+            selected_files = select_best_icm_files([str(f) for f in result_files])
+            logger.info(f"Quality selection: using {len(selected_files)} out of {len(result_files)} files")
+        else:
+            selected_files = [str(f) for f in result_files]
+            logger.info("Quality selection disabled - using all files")
         
         # Create combined DPO dataset
         storage = ICMStorage()
         output_path = combine_icm_results_to_dpo(
-            result_files=[str(f) for f in result_files],
+            result_files=selected_files,
             output_path=args.output_path,
-            storage=storage
+            storage=storage,
+            fix_responses=args.fix_responses,
+            balance_strategy=args.balance_strategy,
+            max_per_benchmark=args.max_per_benchmark
         )
         
         logger.info(f"Combined DPO dataset created: {output_path}")
@@ -493,6 +503,13 @@ def parse_args():
     export_combined_parser = subparsers.add_parser("export-combined", help="Combine multiple ICM results into single DPO dataset")
     export_combined_parser.add_argument("--input-dir", type=str, default="icm_results", help="Directory containing ICM result files")
     export_combined_parser.add_argument("--output-path", type=str, required=True, help="Output path for combined DPO dataset")
+    export_combined_parser.add_argument("--fix-responses", action="store_true", default=True, help="Extract clean answers from response_text (removes question repetition)")
+    export_combined_parser.add_argument("--no-fix-responses", action="store_false", dest="fix_responses", help="Use original response_text format")
+    export_combined_parser.add_argument("--balance-strategy", type=str, default="none", choices=["equal", "proportional", "none"], 
+                                       help="Dataset balancing strategy")
+    export_combined_parser.add_argument("--max-per-benchmark", type=int, default=1000, help="Maximum examples per benchmark group when balancing")
+    export_combined_parser.add_argument("--quality-selection", action="store_true", default=True, help="Use quality-based file selection (default: enabled)")
+    export_combined_parser.add_argument("--no-quality-selection", action="store_false", dest="quality_selection", help="Disable quality selection, use all files")
     export_combined_parser.add_argument("--hf-push", action="store_true", help="Push to Hugging Face")
     export_combined_parser.add_argument("--hf-repo-id", type=str, help="HF repository ID")
     export_combined_parser.add_argument("--private", action="store_true", help="Make HF repo private")

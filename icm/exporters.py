@@ -202,9 +202,9 @@ class ICMExporter:
                 # Create all possible (preferred, rejected) pairs
                 for true_ex in true_examples:  # Preferred (correct solutions)
                     for false_ex in false_examples:  # Rejected (incorrect solutions)
-                        # Extract the solution from the input
-                        preferred_solution = true_ex.get("metadata", {}).get("solution", "")
-                        rejected_solution = false_ex.get("metadata", {}).get("solution", "")
+                        # Extract the response from metadata
+                        preferred_solution = true_ex.get("metadata", {}).get("response_text", "")
+                        rejected_solution = false_ex.get("metadata", {}).get("response_text", "")
                         
                         dpo_example = {
                             "prompt": question,  # The mathematical question
@@ -239,8 +239,8 @@ class ICMExporter:
                 
                 # If we have both true and false examples, create a pair
                 if true_examples and false_examples:
-                    preferred_solution = true_examples[0].get("metadata", {}).get("solution", "")
-                    rejected_solution = false_examples[0].get("metadata", {}).get("solution", "")
+                    preferred_solution = true_examples[0].get("metadata", {}).get("response_text", "")
+                    rejected_solution = false_examples[0].get("metadata", {}).get("response_text", "")
                     
                     dpo_example = {
                         "prompt": question,
@@ -439,10 +439,138 @@ This dataset is released under the same license as the source data and model use
         return readme
 
 
+def extract_answer_from_response(response_text: str, metadata: Dict[str, Any]) -> str:
+    """
+    Extract only the answer portion from response_text, removing question repetition.
+    
+    Args:
+        response_text: Full response text from ICM results
+        metadata: Example metadata for fallback extraction
+        
+    Returns:
+        Clean answer text without question repetition
+    """
+    if not response_text:
+        return ""
+    
+    # Handle different response formats
+    if "\n\nSolution:" in response_text:
+        # GSM8K format: "Question: X\n\nSolution: Y"
+        return response_text.split("\n\nSolution:", 1)[1].strip()
+    elif "\n\nAnswer:" in response_text:
+        # General format: "Problem: X\n\nAnswer: Y"
+        return response_text.split("\n\nAnswer:", 1)[1].strip()
+    elif "\n\nResponse:" in response_text:
+        # IFEval format: "Instruction: X\n\nResponse: Y"
+        return response_text.split("\n\nResponse:", 1)[1].strip()
+    elif "\n\nChoice" in response_text:
+        # BigBench multiple choice: "Problem: X\n\nChoice Y: Z"
+        parts = response_text.split("\n\nChoice", 1)[1]
+        return "Choice" + parts.strip()
+    elif "\n\n" in response_text and ("Question:" in response_text or "Problem:" in response_text or "Instruction:" in response_text):
+        # Generic format: "[Prefix]: X\n\nY"
+        return response_text.split("\n\n", 1)[1].strip()
+    else:
+        # Fallback: try to use solution/answer from metadata if cleaner
+        solution = metadata.get("solution", "")
+        answer = metadata.get("answer", "")
+        
+        if solution and len(solution) < len(response_text) * 0.8:
+            return solution
+        elif answer and len(answer) < len(response_text) * 0.8:
+            return answer
+        else:
+            # Last resort: return original response_text
+            return response_text
+
+
+def select_best_icm_files(result_files: List[str]) -> List[str]:
+    """
+    Select the highest quality ICM files based on balance ratio and other metrics.
+    
+    Args:
+        result_files: List of all available ICM result files
+        
+    Returns:
+        List of selected high-quality files
+    """
+    logger = logging.getLogger(__name__)
+    
+    # Group files by dataset
+    files_by_dataset = {}
+    for file in result_files:
+        dataset_name = os.path.basename(file).split('_')[0]
+        if dataset_name not in files_by_dataset:
+            files_by_dataset[dataset_name] = []
+        files_by_dataset[dataset_name].append(file)
+    
+    selected_files = []
+    
+    # Per-benchmark selection limits (to ensure balanced coverage)
+    selection_limits = {
+        'bigbenchhard': 8,  # Select best 8 out of 27 BigBench files
+        'winogrande': 5,    # All 5 winogrande files (different sizes)
+        'gsm8k': 2,         # Both gsm8k files (main + socratic)
+        'ai2': 2,           # Both ARC files (challenge + easy) 
+        'truthful': 2,      # Both truthful files
+        'hellaswag': 1,     # Single hellaswag file
+        'piqa': 1,          # Single piqa file
+        'IFEval': 0         # Skip IFEval (empty responses)
+    }
+    
+    for dataset_name, files in files_by_dataset.items():
+        max_files = selection_limits.get(dataset_name, len(files))
+        
+        if max_files == 0:
+            logger.info(f"Skipping {dataset_name} - no usable data (empty responses)")
+            continue
+        
+        # Calculate quality metrics for each file
+        file_qualities = []
+        for file in files:
+            try:
+                with open(file, 'r') as f:
+                    examples = [json.loads(line) for line in f]
+                
+                true_count = sum(1 for ex in examples if ex["label"] == "True")
+                false_count = sum(1 for ex in examples if ex["label"] == "False")
+                
+                # Quality score based on balance ratio (prefer 0.7-1.0)
+                if true_count > 0 and false_count > 0:
+                    balance_ratio = min(true_count, false_count) / max(true_count, false_count)
+                    usable_pairs = min(true_count, false_count)
+                    
+                    # Boost score for better balance and more pairs
+                    quality_score = balance_ratio * (1 + usable_pairs / 1000)  
+                else:
+                    quality_score = 0  # No pairs possible
+                
+                file_qualities.append((file, quality_score, balance_ratio, usable_pairs))
+                
+            except Exception as e:
+                logger.warning(f"Failed to analyze {file}: {e}")
+                continue
+        
+        # Sort by quality score and select the best files
+        file_qualities.sort(key=lambda x: x[1], reverse=True)
+        selected_for_dataset = file_qualities[:max_files]
+        
+        for file, score, balance, pairs in selected_for_dataset:
+            selected_files.append(file)
+            logger.info(f"Selected {dataset_name}: {os.path.basename(file)} "
+                       f"(balance: {balance:.2f}, pairs: {pairs}, quality: {score:.3f})")
+    
+    logger.info(f"Selected {len(selected_files)} high-quality files out of {len(result_files)} total")
+    return selected_files
+
+
 def combine_icm_results_to_dpo(
     result_files: List[str],
     output_path: str,
-    storage: Optional[ICMStorage] = None
+    storage: Optional[ICMStorage] = None,
+    fix_responses: bool = True,
+    balance_strategy: str = "none",
+    max_per_benchmark: int = 1000
 ) -> str:
     """
     Combine multiple ICM result files into a single DPO dataset.
@@ -451,6 +579,9 @@ def combine_icm_results_to_dpo(
         result_files: List of ICM result file paths
         output_path: Output file path for combined DPO dataset
         storage: ICM storage instance (optional)
+        fix_responses: Whether to extract clean answers from response_text
+        balance_strategy: "equal", "proportional", or "none"
+        max_per_benchmark: Maximum examples per benchmark group
         
     Returns:
         Path to combined DPO dataset
@@ -460,6 +591,22 @@ def combine_icm_results_to_dpo(
     
     all_dpo_examples = []
     dataset_sources = {}
+    
+    # Dataset balancing configuration
+    BENCHMARK_GROUPS = {
+        "hellaswag": "hellaswag",
+        "piqa": "piqa", 
+        "ai2": "arc",  # ai2_arc maps to arc benchmark group
+        "winogrande": "winogrande",
+        "bigbenchhard": "bigbench",
+        "IFEval": "ifeval",
+        "truthful": "truthfulqa",
+        "gsm8k": "gsm8k"
+    }
+    
+    # Track counts per benchmark group for balancing
+    benchmark_counts = {}
+    max_per_group = max_per_benchmark if balance_strategy != "none" else float('inf')
     
     # Statistics tracking for filtered pairs
     skipped_stats = {
@@ -510,8 +657,25 @@ def combine_icm_results_to_dpo(
             logger.warning(f"No examples found in {result_file}, skipping")
             continue
         
+        # Determine benchmark group for balancing
+        benchmark_group = BENCHMARK_GROUPS.get(dataset_name, dataset_name)
+        
+        # Apply balancing if enabled
+        if balance_strategy != "none":
+            current_count = benchmark_counts.get(benchmark_group, 0)
+            if current_count >= max_per_group:
+                logger.info(f"Skipping {dataset_name} - benchmark group '{benchmark_group}' already has {current_count} examples (max: {max_per_group})")
+                continue
+            
+            # Limit examples to stay within budget
+            remaining_budget = max_per_group - current_count
+            if len(labeled_examples) > remaining_budget:
+                logger.info(f"Limiting {dataset_name} from {len(labeled_examples)} to {remaining_budget} examples for balancing")
+                labeled_examples = labeled_examples[:remaining_budget]
+        
         # Track source dataset counts
         dataset_sources[dataset_name] = dataset_sources.get(dataset_name, 0) + len(labeled_examples)
+        benchmark_counts[benchmark_group] = benchmark_counts.get(benchmark_group, 0) + len(labeled_examples)
         
         # Group by question to create pairs
         question_groups = {}
@@ -560,17 +724,33 @@ def combine_icm_results_to_dpo(
             else:
                 logger.debug(f"Question '{question[:50]}...' has {len(true_examples)} True and {len(false_examples)} False examples")
             
-            # Create pairs
+            # Create pairs (with limit to prevent single question dominating dataset)
+            max_pairs_per_question = 5  # Limit pairs per question to prevent dominance
+            pairs_created_for_question = 0
+            
             for true_ex in true_examples:
+                if pairs_created_for_question >= max_pairs_per_question:
+                    break
                 for false_ex in false_examples:
+                    if pairs_created_for_question >= max_pairs_per_question:
+                        break
                     skipped_stats["total_processed"] += 1
                     
                     # Extract solutions/answers - USE RESPONSE_TEXT FIELD ONLY
                     task_type = true_ex.get("metadata", {}).get("task", "")
                     
-                    # STRICT EXTRACTION - NO FALLBACKS TO EMPTY STRINGS
-                    preferred = true_ex.get("metadata", {}).get("response_text")
-                    rejected = false_ex.get("metadata", {}).get("response_text")
+                    # Extract responses - use clean answer extraction if enabled
+                    preferred_raw = true_ex.get("metadata", {}).get("response_text")
+                    rejected_raw = false_ex.get("metadata", {}).get("response_text")
+                    
+                    if fix_responses:
+                        # Extract only the answer portion, removing question repetition
+                        preferred = extract_answer_from_response(preferred_raw or "", true_ex.get("metadata", {}))
+                        rejected = extract_answer_from_response(rejected_raw or "", false_ex.get("metadata", {}))
+                    else:
+                        # Use original response_text (legacy behavior)
+                        preferred = preferred_raw
+                        rejected = rejected_raw
                     
                     # VALIDATION - SKIP PAIRS WITH ISSUES (DON'T FAIL)
                     if not preferred or not rejected:
@@ -579,10 +759,24 @@ def combine_icm_results_to_dpo(
                                    f"preferred={'✓' if preferred else '✗'}, rejected={'✓' if rejected else '✗'}")
                         continue
                     
-                    # Check response length - SKIP if too short
-                    if len(preferred) < 50 or len(rejected) < 50:
+                    # Check response length - SKIP if too short (adjust threshold by dataset)
+                    # Skip IFEval entirely due to empty responses, allow short BigBench answers
+                    if dataset_name == 'IFEval':
+                        # Skip IFEval - has empty responses, can't generate meaningful DPO pairs
                         skipped_stats["too_short"] += 1
-                        logger.debug(f"Skipping short response pair for task '{task_type}': "
+                        logger.debug(f"Skipping IFEval pair - dataset has empty responses")
+                        continue
+                    elif dataset_name == 'bigbenchhard':
+                        # Allow very short BigBench answers (e.g., "valid", "invalid", single words)
+                        min_length = 1
+                    elif dataset_name in ['piqa']:
+                        min_length = 15
+                    else:
+                        min_length = 30
+                    
+                    if len(preferred) < min_length or len(rejected) < min_length:
+                        skipped_stats["too_short"] += 1
+                        logger.debug(f"Skipping short response pair for task '{task_type}' (min {min_length}): "
                                    f"chosen={len(preferred)} chars, rejected={len(rejected)} chars")
                         continue
                     
@@ -610,6 +804,7 @@ def combine_icm_results_to_dpo(
                         "task_type": task_type
                     }
                     all_dpo_examples.append(dpo_example)
+                    pairs_created_for_question += 1
     
     # Write combined DPO dataset
     with open(output_path, 'w') as f:
@@ -627,7 +822,7 @@ def combine_icm_results_to_dpo(
     total_skipped = sum(v for k, v in skipped_stats.items() if k != 'total_processed')
     if total_skipped > 0:
         logger.info(f"Skipped pairs breakdown:")
-        logger.info(f"  - Too short (<50 chars): {skipped_stats['too_short']} ({100*skipped_stats['too_short']/skipped_stats['total_processed']:.1f}%)")
+        logger.info(f"  - Too short (< min chars): {skipped_stats['too_short']} ({100*skipped_stats['too_short']/skipped_stats['total_processed']:.1f}%)")
         logger.info(f"  - Identical responses: {skipped_stats['identical']} ({100*skipped_stats['identical']/skipped_stats['total_processed']:.1f}%)")
         logger.info(f"  - Missing metadata: {skipped_stats['missing_metadata']} ({100*skipped_stats['missing_metadata']/skipped_stats['total_processed']:.1f}%)")
         
@@ -641,6 +836,20 @@ def combine_icm_results_to_dpo(
     logger.info("Source datasets:")
     for dataset, count in dataset_sources.items():
         logger.info(f"  - {dataset}: {count} examples")
+    
+    if balance_strategy != "none":
+        logger.info(f"\\nBalancing applied (strategy: {balance_strategy}, max per benchmark: {max_per_benchmark}):")
+        logger.info("Benchmark group distribution:")
+        total_balanced = 0
+        for group, count in benchmark_counts.items():
+            logger.info(f"  - {group}: {count} examples")
+            total_balanced += count
+        logger.info(f"Total balanced examples: {total_balanced}")
+    
+    if fix_responses:
+        logger.info("✅ Response extraction applied - answers extracted from full response_text")
+    else:
+        logger.info("⚠️  Using original response_text format (includes question repetition)")
     
     return output_path
 

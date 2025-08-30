@@ -340,7 +340,7 @@ def _detect_task_type(examples: List[Dict[str, Any]], dataset_name: str) -> str:
 
 
 def _convert_truthfulqa(examples: List[Dict[str, Any]]) -> List[ICMExample]:
-    """Convert TruthfulQA examples to ICM format with diverse answer generation."""
+    """Convert TruthfulQA examples to ICM format using actual answers only."""
     icm_examples = []
     
     for example in examples:
@@ -349,20 +349,17 @@ def _convert_truthfulqa(examples: List[Dict[str, Any]]) -> List[ICMExample]:
         # Handle multiple choice answers
         if "mc1_targets" in example:
             choices = example["mc1_targets"]["choices"]
-            labels = example["mc1_targets"]["labels"]
             
-            # Generate diverse solutions for each question
-            all_choices = list(zip(choices, labels))
-            diverse_choices = _generate_diverse_truthfulqa_answers(question, all_choices)
-            
-            for choice in diverse_choices:
-                input_text = f"Question: {question}\nClaim: {choice}\nI think this Claim is [True/False]"
+            # Use ALL actual choices from the dataset - let ICM discover which are true
+            for choice in choices:
+                input_text = f"Question: {question}\nAnswer: {choice}\nClaim: This answer is truthful\nI think this Claim is [True/False]"
                 metadata = {
                     "question": question,
                     "choice": choice,
                     "task": "truthfulness",
-                    "response_text": f"Question: {question}\n\nAnswer: {choice}"
-                    # No gold_label - ICM will determine this
+                    "response_text": choice,  # Just the answer for clean DPO responses
+                    "prompt_text": question  # Store question separately
+                    # No gold_label - ICM will determine this through internal coherence
                 }
                 icm_examples.append(ICMExample(input_text, metadata))
         
@@ -371,17 +368,18 @@ def _convert_truthfulqa(examples: List[Dict[str, Any]]) -> List[ICMExample]:
             best_answer = example["best_answer"]
             incorrect_answers = example.get("incorrect_answers", [])
             
-            # Generate diverse answers
-            diverse_answers = _generate_diverse_truthfulqa_answers(question, [(best_answer, True)] + [(ans, False) for ans in incorrect_answers[:3]])
+            # Use actual answers from dataset - both correct and incorrect
+            all_answers = [best_answer] + incorrect_answers[:5]  # Limit to reasonable number
             
-            for answer in diverse_answers:
-                input_text = f"Question: {question}\nClaim: {answer}\nI think this Claim is [True/False]"
+            for answer in all_answers:
+                input_text = f"Question: {question}\nAnswer: {answer}\nClaim: This answer is truthful\nI think this Claim is [True/False]"
                 metadata = {
                     "question": question,
                     "answer": answer,
                     "task": "truthfulness",
-                    "response_text": f"Question: {question}\n\nAnswer: {answer}"
-                    # No gold_label - ICM will determine this
+                    "response_text": answer,  # Just the answer for clean DPO responses
+                    "prompt_text": question  # Store question separately
+                    # No gold_label - ICM will determine this through internal coherence
                 }
                 icm_examples.append(ICMExample(input_text, metadata))
     
@@ -389,185 +387,35 @@ def _convert_truthfulqa(examples: List[Dict[str, Any]]) -> List[ICMExample]:
 
 
 def _convert_gsm8k(examples: List[Dict[str, Any]]) -> List[ICMExample]:
-    """Convert GSM8K examples to ICM format with diverse solution generation."""
+    """Convert GSM8K examples to ICM format using original solutions only."""
     icm_examples = []
     
     for example in examples:
         question = example.get("question", "")
         original_answer = example.get("answer", "")
         
-        # Generate diverse solutions for each question
-        solutions = _generate_diverse_solutions(question, original_answer)
-        
-        for solution in solutions:
-            # Create verification task - NO pre-set gold_label
-            input_text = f"Question: {question}\nClaim: {solution}\nI think this Claim is [True/False]"
-            metadata = {
-                "question": question,
-                "solution": solution,
-                "original_solution": original_answer,  # Keep original for reference
-                "task": "mathematical_correctness",
-                "response_text": f"Question: {question}\n\nSolution: {solution}"
-                # No gold_label - ICM will determine this
-            }
-            icm_examples.append(ICMExample(input_text, metadata))
+        # Use ONLY the original answer - let ICM discover if it's correct
+        # Create verification task - NO pre-set gold_label
+        input_text = f"Question: {question}\nSolution: {original_answer}\nClaim: This solution correctly solves the problem\nI think this Claim is [True/False]"
+        metadata = {
+            "question": question,
+            "solution": original_answer,
+            "task": "mathematical_correctness",
+            "response_text": original_answer,  # Just the solution for clean DPO responses
+            "prompt_text": question  # Store question separately
+            # No gold_label - ICM will determine this through internal coherence
+        }
+        icm_examples.append(ICMExample(input_text, metadata))
     
     return icm_examples
 
 
-def _generate_plausible_wrong_answer(problem: str, correct_answer: str) -> str:
-    """
-    Generate a plausible but incorrect answer for reasoning problems.
-    Avoids generic "The answer is 42" responses.
-    """
-    import re
-    
-    # Extract numbers from the correct answer
-    numbers = re.findall(r'\d+', correct_answer)
-    
-    if numbers:
-        # Strategy 1: Modify the last number (often the final answer)
-        wrong_answer = correct_answer
-        last_number = numbers[-1]
-        # Create off-by-one or doubled errors
-        try:
-            num_val = int(last_number)
-            if num_val < 10:
-                wrong_val = num_val + 1  # Off by one
-            else:
-                wrong_val = num_val + 10  # Add 10
-            wrong_answer = wrong_answer.replace(last_number, str(wrong_val), 1)
-        except ValueError:
-            wrong_answer = f"The answer is {int(last_number) // 2}"  # Half the number
-        
-        return wrong_answer
-    
-    # Strategy 2: For non-numeric answers, provide domain-specific wrong answers
-    if "true" in correct_answer.lower() or "false" in correct_answer.lower():
-        return "True" if "false" in correct_answer.lower() else "False"
-    
-    if any(letter in correct_answer.lower() for letter in ['(a)', '(b)', '(c)', '(d)']):
-        # Multiple choice - pick different option
-        options = ['(A)', '(B)', '(C)', '(D)']
-        for opt in options:
-            if opt.lower() not in correct_answer.lower():
-                return opt
-    
-    # Strategy 3: For text answers, provide plausible but incorrect alternatives
-    if len(correct_answer.split()) > 3:
-        # For longer answers, provide a shortened version
-        words = correct_answer.split()
-        return ' '.join(words[:len(words)//2]) + "."
-    
-    # Fallback: Still better than "42"
-    return f"This is incorrect: {correct_answer[:20]}..."
 
 
-def _generate_diverse_solutions(question: str, original_answer: str, num_solutions: int = 4) -> List[str]:
-    """
-    Generate diverse solutions for a math question.
-    Returns a mix of correct and incorrect solutions as the paper describes.
-    """
-    solutions = []
-    
-    # Include the original correct solution
-    solutions.append(original_answer)
-    
-    # Generate variations with different approaches/errors
-    # Solution 2: Simplified/shortened version
-    lines = original_answer.split('\n')
-    if len(lines) > 2:
-        # Take first and last line for a shortened version
-        simplified = f"{lines[0]}\n{lines[-1]}"
-        solutions.append(simplified)
-    
-    # Solution 3: With a calculation error
-    import re
-    error_solution = original_answer
-    # Find calculations and introduce errors
-    calc_pattern = r'<<([^>]+)>>'
-    calculations = re.findall(calc_pattern, original_answer)
-    if calculations:
-        # Modify the first calculation to introduce an error
-        original_calc = calculations[0]
-        if '=' in original_calc:
-            parts = original_calc.split('=')
-            if len(parts) == 2 and parts[1].strip().isdigit():
-                wrong_result = str(int(parts[1].strip()) + 1)  # Off by 1 error
-                wrong_calc = f"{parts[0]}={wrong_result}"
-                error_solution = error_solution.replace(f"<<{original_calc}>>", f"<<{wrong_calc}>>")
-                # Also update the final answer
-                final_answer_pattern = r'#### (\d+)'
-                match = re.search(final_answer_pattern, error_solution)
-                if match:
-                    old_final = match.group(1)
-                    new_final = str(int(old_final) + 1)
-                    error_solution = error_solution.replace(f"#### {old_final}", f"#### {new_final}")
-        solutions.append(error_solution)
-    
-    # Solution 4: Different approach with wrong logic
-    wrong_approach = f"I'll solve this step by step.\n{question.split('?')[0]}?\nThe answer is clearly 42.\n#### 42"
-    solutions.append(wrong_approach)
-    
-    return solutions[:num_solutions]
 
 
-def _generate_diverse_truthfulqa_answers(question: str, choices_with_labels: List[tuple], num_answers: int = 4) -> List[str]:
-    """
-    Generate diverse answers for TruthfulQA questions.
-    Returns a mix of correct and incorrect answers.
-    """
-    answers = []
-    
-    # Separate correct and incorrect answers
-    correct_answers = [choice for choice, label in choices_with_labels if label == 1 or label is True]
-    incorrect_answers = [choice for choice, label in choices_with_labels if label == 0 or label is False]
-    
-    # Include at least one correct answer if available
-    if correct_answers:
-        answers.append(correct_answers[0])
-    
-    # Add incorrect answers
-    for incorrect in incorrect_answers[:2]:
-        answers.append(incorrect)
-    
-    # Generate additional plausible but incorrect answer
-    if len(answers) < num_answers:
-        generic_wrong = f"This is a common misconception about {question.split('?')[0].lower()}."
-        answers.append(generic_wrong)
-    
-    return answers[:num_answers]
 
 
-def _generate_diverse_classification_claims(text: str, original_label: Any, num_claims: int = 4) -> List[str]:
-    """
-    Generate diverse classification claims for a given text.
-    Returns a mix of correct and incorrect claims.
-    """
-    claims = []
-    
-    # Generate different types of claims
-    claims.append(f"This text is positive in sentiment")
-    claims.append(f"This text is negative in sentiment")
-    claims.append(f"This text is neutral in sentiment")
-    claims.append(f"This text contains factual information")
-    
-    return claims[:num_claims]
-
-
-def _generate_diverse_comparison_claims(query: str, response_a: str, response_b: str, num_claims: int = 4) -> List[str]:
-    """
-    Generate diverse comparison claims for two responses.
-    Returns a mix of different comparison criteria.
-    """
-    claims = []
-    
-    claims.append("Response A is better than Response B")
-    claims.append("Response B is better than Response A")
-    claims.append("Response A is more accurate than Response B")
-    claims.append("Response A is more helpful than Response B")
-    
-    return claims[:num_claims]
 
 
 def _convert_classification(examples: List[Dict[str, Any]]) -> List[ICMExample]:
@@ -595,19 +443,20 @@ def _convert_classification(examples: List[Dict[str, Any]]) -> List[ICMExample]:
         if text is None:
             continue
         
-        # Generate diverse classification claims
-        diverse_claims = _generate_diverse_classification_claims(text, label)
+        # Use simple claim about the text - let ICM discover the label
+        claim = f"This text matches its given classification"
         
-        for claim in diverse_claims:
-            input_text = f"Input: {text}\nClaim: {claim}\nI think this Claim is [True/False]"
-            metadata = {
-                "original_text": text,
-                "claim": claim,
-                "task": "classification",
-                "response_text": f"Text: {text}\n\nClassification: {claim}"
-                # No gold_label - ICM will determine this
-            }
-            icm_examples.append(ICMExample(input_text, metadata))
+        # Create single example per text
+        input_text = f"Input: {text}\nLabel: {label}\nClaim: This classification is correct\nI think this Claim is [True/False]"
+        metadata = {
+            "original_text": text,
+            "original_label": label,
+            "task": "classification",
+            "response_text": str(label),  # Just the label for clean DPO responses
+            "prompt_text": text  # Store text separately
+            # No gold_label - ICM will determine this through internal coherence
+        }
+        icm_examples.append(ICMExample(input_text, metadata))
     
     return icm_examples
 
@@ -631,21 +480,21 @@ def _convert_comparison(examples: List[Dict[str, Any]]) -> List[ICMExample]:
         
         query = example.get("query", example.get("prompt", "Compare these responses"))
         
-        # Generate diverse comparison claims
-        diverse_claims = _generate_diverse_comparison_claims(query, response_a, response_b)
-        
-        for claim in diverse_claims:
-            input_text = f"Query: {query}\nResponse A: {response_a}\nResponse B: {response_b}\nClaim: {claim}\nI think this Claim is [True/False]"
-            metadata = {
-                "query": query,
-                "response_a": response_a,
-                "response_b": response_b,
-                "claim": claim,
-                "task": "comparison",
-                "response_text": f"Query: {query}\n\nResponse A: {response_a}\n\nResponse B: {response_b}\n\nComparison: {claim}"
-                # No gold_label - ICM will determine this
-            }
-            icm_examples.append(ICMExample(input_text, metadata))
+        # Use simple comparison claim - let ICM discover the preference
+        claim = f"Response A is better than Response B"
+        input_text = f"Query: {query}\nResponse A: {response_a}\nResponse B: {response_b}\nClaim: {claim}\nI think this Claim is [True/False]"
+        metadata = {
+            "query": query,
+            "response_a": response_a,
+            "response_b": response_b,
+            "claim": claim,
+            "preferred": preferred,
+            "task": "comparison",
+            "response_text": f"A is preferred" if preferred == "A" else "B is preferred",
+            "prompt_text": query
+            # No gold_label - ICM will determine this through internal coherence
+        }
+        icm_examples.append(ICMExample(input_text, metadata))
     
     return icm_examples
 
@@ -676,7 +525,8 @@ def _convert_hellaswag(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                 "activity_label": activity_label,
                 "claim": claim,
                 "task": "common_sense_completion",
-                "response_text": f"Context: {ctx}\n\nEnding: {ending}"
+                "response_text": ending,  # Just the ending for clean DPO responses
+                "prompt_text": ctx  # Store context separately
             }
             icm_examples.append(ICMExample(input_text, metadata))
             
@@ -691,7 +541,8 @@ def _convert_hellaswag(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                 "activity_label": activity_label,
                 "claim": alt_claim,
                 "task": "common_sense_completion",
-                "response_text": f"Context: {ctx}\n\nEnding: {ending}"
+                "response_text": ending,  # Just the ending for clean DPO responses
+                "prompt_text": ctx  # Store context separately
             }
             icm_examples.append(ICMExample(alt_input_text, alt_metadata))
     
@@ -765,7 +616,8 @@ def _convert_arc_challenge(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                 "answer_index": i,
                 "claim": claim,
                 "task": "science_qa",
-                "response_text": f"Question: {question}\n\nAnswer {choice_label}: {choice_text}"
+                "response_text": f"Answer {choice_label}: {choice_text}",  # Just the answer for clean DPO responses
+                "prompt_text": question  # Store question separately
             }
             icm_examples.append(ICMExample(input_text, metadata))
             
@@ -780,7 +632,8 @@ def _convert_arc_challenge(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                 "answer_index": i,
                 "claim": alt_claim,
                 "task": "science_qa",
-                "response_text": f"Question: {question}\n\nAnswer {choice_label}: {choice_text}"
+                "response_text": f"Answer {choice_label}: {choice_text}",  # Just the answer for clean DPO responses
+                "prompt_text": question  # Store question separately
             }
             icm_examples.append(ICMExample(alt_input_text, alt_metadata))
     
@@ -857,7 +710,8 @@ def _convert_bigbench_hard(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                     "target": target,
                     "claim": claim,
                     "task": "reasoning",
-                    "response_text": f"Problem: {input_text_raw}\n\nChoice {i+1}: {choice}"
+                    "response_text": f"Choice {i+1}: {choice}",  # Just the choice for clean DPO responses
+                    "prompt_text": input_text_raw  # Store problem separately
                 }
                 icm_examples.append(ICMExample(input_text, metadata))
         else:
@@ -870,23 +724,10 @@ def _convert_bigbench_hard(examples: List[Dict[str, Any]]) -> List[ICMExample]:
                 "answer": target,
                 "claim": claim,
                 "task": "reasoning",
-                "response_text": f"Problem: {input_text_raw}\n\nAnswer: {target}"
+                "response_text": target,  # Just the answer for clean DPO responses
+                "prompt_text": input_text_raw  # Store problem separately
             }
             icm_examples.append(ICMExample(input_text, metadata))
-            
-            # Add a contrasting incorrect answer - GENERATE PLAUSIBLE WRONG ANSWER
-            wrong_answer = _generate_plausible_wrong_answer(input_text_raw, target)
-            wrong_claim = f"This answer correctly solves the problem"
-            wrong_input_text = f"Problem: {input_text_raw}\nAnswer: {wrong_answer}\nClaim: {wrong_claim}\nI think this Claim is [True/False]"
-            
-            wrong_metadata = {
-                "problem": input_text_raw,
-                "answer": wrong_answer,
-                "claim": wrong_claim,
-                "task": "reasoning",
-                "response_text": f"Problem: {input_text_raw}\n\nAnswer: {wrong_answer}"
-            }
-            icm_examples.append(ICMExample(wrong_input_text, wrong_metadata))
     
     return icm_examples
 
@@ -976,17 +817,12 @@ def create_synthetic_dataset(
             correct_answer = a + b
             question = f"What is {a} + {b}?"
             
-            # Generate diverse solutions for this question
-            correct_solution = f"{a} + {b} = {correct_answer}"
-            wrong_solution1 = f"{a} + {b} = {correct_answer + random.randint(1, 10)}"
-            wrong_solution2 = f"{a} + {b} = {correct_answer - random.randint(1, 5)}"
-            nonsense_solution = f"The answer is clearly 42"
+            # Use only the correct solution - let ICM discover if it's correct
+            solution = f"{a} + {b} = {correct_answer}"
             
-            solutions = [correct_solution, wrong_solution1, wrong_solution2, nonsense_solution]
-            
-            for solution in solutions:
-                input_text = f"Question: {question}\nClaim: {solution}\nI think this Claim is [True/False]"
-                examples.append(ICMExample(input_text, {"question": question, "solution": solution, "task": "math"}))
+            # Create single example per question
+            input_text = f"Question: {question}\nSolution: {solution}\nClaim: This solution is correct\nI think this Claim is [True/False]"
+            examples.append(ICMExample(input_text, {"question": question, "solution": solution, "task": "math"}))
     
     elif task_type == "comparison":
         for i in range(num_examples):
