@@ -54,6 +54,7 @@ class ICMSearcher:
         generation_top_p: float = 0.9,
         generation_max_tokens: int = 512,
         consistency_checker: Optional[LogicalConsistencyChecker] = None,
+        confidence_threshold: float = 0.1,
         seed: int = 42,
         log_level: str = "INFO"
     ):
@@ -74,6 +75,7 @@ class ICMSearcher:
             generation_top_p: Top-p for text generation
             generation_max_tokens: Max tokens for generation
             consistency_checker: Custom consistency checker
+            confidence_threshold: Minimum confidence to label an example (0-1)
             seed: Random seed
             log_level: Logging level
         """
@@ -100,6 +102,7 @@ class ICMSearcher:
         self.generation_temperature = generation_temperature
         self.generation_top_p = generation_top_p
         self.generation_max_tokens = generation_max_tokens
+        self.confidence_threshold = confidence_threshold
         self.seed = seed
         
         # Set up logging
@@ -270,6 +273,16 @@ class ICMSearcher:
                     # Generate label for the example
                     new_label = self._generate_label(example, labeled_data, task_type)
                     
+                    # Calculate confidence for this labeling decision
+                    confidence = self._calculate_example_confidence(
+                        example_idx, example, new_label, labeled_data, best_score
+                    )
+                    
+                    # Only proceed if confidence meets threshold
+                    if confidence < self.confidence_threshold:
+                        self.logger.debug(f"Iteration {iteration}: Skipped example {example_idx}, low confidence {confidence:.3f} < {self.confidence_threshold}")
+                        continue
+                    
                     # Create new labeled data with the proposed label
                     new_labeled_data = labeled_data.copy()
                     new_labeled_data[example_idx] = {
@@ -290,7 +303,7 @@ class ICMSearcher:
                     if delta > 0 or random.random() < math.exp(delta / temperature):
                         labeled_data = new_labeled_data
                         best_score = new_score
-                        self.logger.debug(f"Iteration {iteration}: Accepted, score = {best_score:.4f}")
+                        self.logger.debug(f"Iteration {iteration}: Accepted example {example_idx}, confidence {confidence:.3f}, score = {best_score:.4f}")
                     else:
                         self.logger.debug(f"Iteration {iteration}: Rejected, score = {new_score:.4f}")
                     
@@ -743,3 +756,52 @@ class ICMSearcher:
         except Exception as e:
             self.logger.warning(f"Error calculating conditional probability: {e}")
             return -10.0  # Large negative log probability
+
+    def _calculate_example_confidence(
+        self, 
+        example_idx: int,
+        example: ICMExample,
+        new_label: str,
+        labeled_data: Dict[int, Dict[str, Any]],
+        current_score: float
+    ) -> float:
+        """
+        Calculate confidence for labeling a specific example.
+        
+        Confidence is based on how much the mutual predictability improves
+        when we add this example with the proposed label.
+        
+        Returns:
+            float: Confidence score (0 to 1), higher is more confident
+        """
+        try:
+            # Create temporary labeled data with the new example
+            temp_labeled_data = labeled_data.copy()
+            temp_labeled_data[example_idx] = {
+                "example": example,
+                "label": new_label,
+                "index": example_idx
+            }
+            
+            # Calculate the new mutual predictability
+            new_mutual_predictability = self._calculate_mutual_predictability(temp_labeled_data)
+            
+            # Calculate current mutual predictability (without this example)
+            current_mutual_predictability = self._calculate_mutual_predictability(labeled_data) if labeled_data else 0.0
+            
+            # Confidence is the improvement in mutual predictability, normalized
+            improvement = new_mutual_predictability - current_mutual_predictability
+            
+            # Normalize based on the scale of current mutual predictability
+            # Use a reasonable normalization factor that doesn't depend on alpha
+            normalization = max(1.0, abs(current_mutual_predictability) * 0.1) if current_mutual_predictability != 0 else 1.0
+            confidence = max(0.0, min(1.0, improvement / normalization))
+            
+            # Log the confidence calculation for debugging
+            self.logger.debug(f"Confidence calculation: improvement={improvement:.4f}, normalization={normalization:.4f}, confidence={confidence:.4f}")
+            
+            return confidence
+            
+        except Exception as e:
+            self.logger.warning(f"Error calculating example confidence: {e}")
+            return 0.0  # Low confidence on error

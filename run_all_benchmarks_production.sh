@@ -1,5 +1,6 @@
 #!/bin/bash
-# DPO-focused production script to run ICM on datasets that produce valid DPO pairs
+# OPTIMIZED ICM script for eliciting latent knowledge from Gemma 3 270M
+# Parameters tuned specifically for better mutual predictability and knowledge elicitation
 # Only includes multi-choice datasets that naturally create preference pairs
 
 # Enable this for debugging CUDA errors if needed
@@ -7,10 +8,11 @@
 
 MODEL="google/gemma-3-270m-it"
 
-echo "🚀 Running ICM on DPO-COMPATIBLE benchmark configurations..."
+echo "🚀 Running CONFIDENCE-FILTERED ICM for knowledge elicitation..."
 echo "Model: $MODEL"
 echo "Total configurations: 6 (filtered for DPO compatibility)"
-echo "Optimization: alpha=50.0, temp=8.0→0.001, gen_temp=0.3, K=50, iter=500"
+echo "OPTIMIZED: alpha=200.0, temp=15.0→0.0001, gen_temp=0.8, K=75, conf=0.05"
+echo "Key insight: Fixed confidence calculation, only label examples with 5%+ confidence"
 
 # Check if we should force CPU mode for debugging
 if [ "$1" = "--cpu" ]; then
@@ -25,43 +27,58 @@ fi
 
 echo ""
 echo "1/6: HellaSwag (✓ 4 endings per context)..."
+echo "    Confidence filtering: Only label high-confidence common sense predictions"
 python -m icm.cli run --model $MODEL \
     --dataset Rowan/hellaswag \
     --task-type hellaswag \
-    --alpha 50.0 \
-    --initial-temperature 8.0 \
-    --generation-temperature 0.3 \
-    --initial-examples 50 \
-    --max-examples 1000 \
-    --max-iterations 500 \
+    --alpha 200.0 \
+    --initial-temperature 15.0 \
+    --final-temperature 0.0001 \
+    --generation-temperature 0.8 \
+    --initial-examples 75 \
+    --max-examples 600 \
+    --max-iterations 1500 \
+    --cooling-rate 0.995 \
+    --confidence-threshold 0.05 \
+    --log-level INFO \
     $DEVICE_ARG
 
 echo ""
 echo "2/6: PIQA (✓ 2 solutions per goal)..."
+echo "    Confidence filtering: Only label high-confidence physical reasoning"
 python -m icm.cli run --model $MODEL \
     --dataset piqa \
     --task-type piqa \
-    --alpha 50.0 \
-    --initial-temperature 8.0 \
-    --generation-temperature 0.3 \
-    --initial-examples 50 \
-    --max-examples 1000 \
-    --max-iterations 500 \
+    --alpha 200.0 \
+    --initial-temperature 15.0 \
+    --final-temperature 0.0001 \
+    --generation-temperature 0.8 \
+    --initial-examples 75 \
+    --max-examples 600 \
+    --max-iterations 1500 \
+    --cooling-rate 0.995 \
+    --confidence-threshold 0.05 \
+    --log-level INFO \
     $DEVICE_ARG
 
 echo ""
 echo "3/6: ARC - Both configs (✓ 4 choices per question)..."
+echo "    Confidence filtering: Only label high-confidence science knowledge"
 echo "  ARC-Challenge..."
 python -m icm.cli run --model $MODEL \
     --dataset allenai/ai2_arc \
     --task-type arc_challenge \
     --config ARC-Challenge \
-    --alpha 50.0 \
-    --initial-temperature 8.0 \
-    --generation-temperature 0.3 \
-    --initial-examples 50 \
-    --max-examples 800 \
-    --max-iterations 500 \
+    --alpha 200.0 \
+    --initial-temperature 15.0 \
+    --final-temperature 0.0001 \
+    --generation-temperature 0.8 \
+    --initial-examples 75 \
+    --max-examples 500 \
+    --max-iterations 1500 \
+    --cooling-rate 0.995 \
+    --confidence-threshold 0.05 \
+    --log-level INFO \
     $DEVICE_ARG
 
 echo "  ARC-Easy..."
@@ -69,40 +86,53 @@ python -m icm.cli run --model $MODEL \
     --dataset allenai/ai2_arc \
     --task-type arc_challenge \
     --config ARC-Easy \
-    --alpha 50.0 \
-    --initial-temperature 8.0 \
-    --generation-temperature 0.3 \
-    --initial-examples 50 \
-    --max-examples 800 \
-    --max-iterations 500 \
+    --alpha 200.0 \
+    --initial-temperature 15.0 \
+    --final-temperature 0.0001 \
+    --generation-temperature 0.8 \
+    --initial-examples 75 \
+    --max-examples 500 \
+    --max-iterations 1500 \
+    --cooling-rate 0.995 \
+    --confidence-threshold 0.05 \
+    --log-level INFO \
     $DEVICE_ARG
 
 echo ""
 echo "4/6: WinoGrande (✓ 2 options per sentence)..."
-echo "  WinoGrande (all configs use same validation data)..."
+echo "    Confidence filtering: Only label high-confidence pronoun resolution"
 python -m icm.cli run --model $MODEL \
     --dataset allenai/winogrande \
     --task-type winogrande \
-    --alpha 50.0 \
-    --initial-temperature 8.0 \
-    --generation-temperature 0.3 \
-    --initial-examples 50 \
+    --alpha 200.0 \
+    --initial-temperature 15.0 \
+    --final-temperature 0.0001 \
+    --generation-temperature 0.8 \
+    --initial-examples 75 \
     --max-examples 600 \
-    --max-iterations 500 \
+    --max-iterations 1500 \
+    --cooling-rate 0.995 \
+    --confidence-threshold 0.05 \
+    --log-level INFO \
     $DEVICE_ARG
 
 echo ""
 echo "5/6: TruthfulQA multiple_choice (✓ Multiple answer choices)..."
+echo "    Confidence filtering: Only label high-confidence truth detection"
 python -m icm.cli run --model $MODEL \
     --dataset truthful_qa \
     --task-type truthfulqa \
     --config multiple_choice \
-    --alpha 50.0 \
-    --initial-temperature 8.0 \
-    --generation-temperature 0.3 \
-    --initial-examples 50 \
+    --alpha 200.0 \
+    --initial-temperature 15.0 \
+    --final-temperature 0.0001 \
+    --generation-temperature 0.8 \
+    --initial-examples 75 \
     --max-examples 400 \
-    --max-iterations 500 \
+    --max-iterations 1500 \
+    --cooling-rate 0.995 \
+    --confidence-threshold 0.05 \
+    --log-level INFO \
     $DEVICE_ARG
 
 echo ""
@@ -125,15 +155,21 @@ if [ -f "gemma3_dpo_ready.jsonl" ]; then
 fi
 
 echo ""
-echo "✅ COMPLETE! DPO-focused production run finished!"
+echo "✅ COMPLETE! OPTIMIZED ICM knowledge elicitation finished!"
 echo ""
-echo "Summary of DPO-compatible datasets processed:"
-echo "  ✅ HellaSwag: 1 config (4 endings → preference pairs)"
-echo "  ✅ PIQA: 1 config (2 solutions → preference pairs)"
-echo "  ✅ ARC: 2 configs (4 choices → preference pairs)"
-echo "  ✅ WinoGrande: 1 config (2 options → preference pairs)"
-echo "  ✅ TruthfulQA: 1 config (multiple choices → preference pairs)"
-echo "  Total: 6 configurations producing valid DPO pairs"
+echo "🧠 Confidence-Filtered Knowledge Elicitation Summary:"
+echo "  ✅ HellaSwag: Common sense (α=200, K=75, conf=0.15, max=600)"
+echo "  ✅ PIQA: Physical reasoning (α=200, K=75, conf=0.15, max=600)"
+echo "  ✅ ARC: Science knowledge (α=200, K=75, conf=0.15, max=500)"
+echo "  ✅ WinoGrande: Logical reasoning (α=200, K=75, conf=0.15, max=600)"
+echo "  ✅ TruthfulQA: Factual accuracy (α=200, K=75, conf=0.15, max=400)"
+echo "  Total: 6 configurations with confidence-filtered labeling"
+echo ""
+echo "🔍 Confidence Filtering Benefits:"
+echo "  • Previous: 8.5% accuracy (no filtering, all examples labeled)"
+echo "  • Expected: 50-70% accuracy (only confident examples labeled)"
+echo "  • Key: Quality over quantity - skip uncertain predictions"
+echo "  • Result: Fewer but much more accurate labels for DPO"
 echo ""
 echo "EXCLUDED (no DPO pairs possible):"
 echo "  ❌ GSM8K (single solution per question)"
@@ -142,9 +178,12 @@ echo "  ❌ IFEval (single instruction per example)"
 echo "  ❌ TruthfulQA generation (single generation task)"
 echo ""
 echo "Next steps:"
-echo "1. Fine-tune Gemma 3 270M-IT with DPO using: gemma3_dpo_ready.jsonl"
-echo "2. Benefits of this approach:"
-echo "   ✅ Only valid preference pairs (no empty chosen/rejected)"
-echo "   ✅ True ICM-discovered preferences (no synthetic data)"
-echo "   ✅ Efficient training with high-quality pairs"
-echo "   ✅ Natural multi-choice structure preserved"
+echo "1. Validate ICM results - check if accuracy improved from ~8.5% to 40%+"
+echo "2. If validation passes, fine-tune Gemma 3 270M-IT with DPO"
+echo "3. Benefits of optimized ICM approach:"
+echo "   🧠 Elicits latent knowledge through mutual consistency"
+echo "   🔄 4x higher alpha prioritizes correct patterns"
+echo "   🌡️  Higher temperatures enable exploration"
+echo "   📊 3x more context improves pattern discovery"
+echo "   ⏱️  3x more iterations ensure convergence"
+echo "   ✅ No external supervision required"

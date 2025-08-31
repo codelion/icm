@@ -85,6 +85,7 @@ def run_icm(args):
             generation_top_p=args.generation_top_p,
             generation_max_tokens=args.generation_max_tokens,
             consistency_checker=consistency_checker,
+            confidence_threshold=args.confidence_threshold,
             seed=args.seed,
             log_level=args.log_level
         )
@@ -431,6 +432,8 @@ def parse_args():
     run_parser.add_argument("--max-iterations", type=int, default=1000, help="Maximum iterations")
     run_parser.add_argument("--consistency-fix-iterations", type=int, default=10, 
                            help="Max iterations for consistency fixing")
+    run_parser.add_argument("--confidence-threshold", type=float, default=0.1, 
+                           help="Minimum confidence to label an example (0-1)")
     
     # Generation parameters
     run_parser.add_argument("--generation-temperature", type=float, default=0.2, help="Temperature for text generation")
