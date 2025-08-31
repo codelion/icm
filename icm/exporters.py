@@ -206,14 +206,16 @@ class ICMExporter:
                         preferred_solution = true_ex.get("metadata", {}).get("response_text", "")
                         rejected_solution = false_ex.get("metadata", {}).get("response_text", "")
                         
-                        dpo_example = {
-                            "prompt": question,  # The mathematical question
-                            "chosen": preferred_solution,  # ICM-labeled True solution
-                            "rejected": rejected_solution,  # ICM-labeled False solution
-                            "chosen_metadata": true_ex.get("metadata", {}),
-                            "rejected_metadata": false_ex.get("metadata", {})
-                        }
-                        dpo_examples.append(dpo_example)
+                        # Skip if chosen and rejected are identical (not a valid preference pair)
+                        if preferred_solution != rejected_solution:
+                            dpo_example = {
+                                "prompt": question,  # The mathematical question
+                                "chosen": preferred_solution,  # ICM-labeled True solution
+                                "rejected": rejected_solution,  # ICM-labeled False solution
+                                "chosen_metadata": true_ex.get("metadata", {}),
+                                "rejected_metadata": false_ex.get("metadata", {})
+                            }
+                            dpo_examples.append(dpo_example)
         else:
             # Simple format - create pairs within same question groups
             # Group by question first
@@ -242,12 +244,14 @@ class ICMExporter:
                     preferred_solution = true_examples[0].get("metadata", {}).get("response_text", "")
                     rejected_solution = false_examples[0].get("metadata", {}).get("response_text", "")
                     
-                    dpo_example = {
-                        "prompt": question,
-                        "chosen": preferred_solution,
-                        "rejected": rejected_solution
-                    }
-                    dpo_examples.append(dpo_example)
+                    # Skip if chosen and rejected are identical (not a valid preference pair)
+                    if preferred_solution != rejected_solution:
+                        dpo_example = {
+                            "prompt": question,
+                            "chosen": preferred_solution,
+                            "rejected": rejected_solution
+                        }
+                        dpo_examples.append(dpo_example)
         
         with open(output_path, 'w') as f:
             for example in dpo_examples:
