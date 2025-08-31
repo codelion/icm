@@ -9,7 +9,7 @@ MODEL="google/gemma-3-270m-it"
 
 echo "🚀 Running ICM on DPO-COMPATIBLE benchmark configurations..."
 echo "Model: $MODEL"
-echo "Total configurations: 10 (filtered for DPO compatibility)"
+echo "Total configurations: 6 (filtered for DPO compatibility)"
 echo "Optimization: alpha=50.0, temp=8.0→0.001, gen_temp=0.3, K=50, iter=500"
 
 # Check if we should force CPU mode for debugging
@@ -78,21 +78,18 @@ python -m icm.cli run --model $MODEL \
     $DEVICE_ARG
 
 echo ""
-echo "4/6: WinoGrande - All 5 size configs (✓ 2 options per sentence)..."
-for size in winogrande_xs winogrande_s winogrande_m winogrande_l winogrande_xl; do
-    echo "  WinoGrande $size..."
-    python -m icm.cli run --model $MODEL \
-        --dataset allenai/winogrande \
-        --task-type winogrande \
-        --config $size \
-        --alpha 50.0 \
-        --initial-temperature 8.0 \
-        --generation-temperature 0.3 \
-        --initial-examples 50 \
-        --max-examples 600 \
-        --max-iterations 500 \
+echo "4/6: WinoGrande (✓ 2 options per sentence)..."
+echo "  WinoGrande (all configs use same validation data)..."
+python -m icm.cli run --model $MODEL \
+    --dataset allenai/winogrande \
+    --task-type winogrande \
+    --alpha 50.0 \
+    --initial-temperature 8.0 \
+    --generation-temperature 0.3 \
+    --initial-examples 50 \
+    --max-examples 600 \
+    --max-iterations 500 \
     $DEVICE_ARG
-done
 
 echo ""
 echo "5/6: TruthfulQA multiple_choice (✓ Multiple answer choices)..."
@@ -122,7 +119,7 @@ echo "📊 Final DPO statistics..."
 if [ -f "gemma3_dpo_ready.jsonl" ]; then
     lines=$(wc -l < gemma3_dpo_ready.jsonl)
     echo "Total DPO preference pairs: $lines"
-    echo "Expected range: 500-2,000 pairs (only from multi-choice datasets)"
+    echo "Expected range: 300-1,500 pairs (only from multi-choice datasets)"
     echo "Sample DPO pair:"
     head -1 gemma3_dpo_ready.jsonl | python -m json.tool
 fi
@@ -134,9 +131,9 @@ echo "Summary of DPO-compatible datasets processed:"
 echo "  ✅ HellaSwag: 1 config (4 endings → preference pairs)"
 echo "  ✅ PIQA: 1 config (2 solutions → preference pairs)"
 echo "  ✅ ARC: 2 configs (4 choices → preference pairs)"
-echo "  ✅ WinoGrande: 5 configs (2 options → preference pairs)"
+echo "  ✅ WinoGrande: 1 config (2 options → preference pairs)"
 echo "  ✅ TruthfulQA: 1 config (multiple choices → preference pairs)"
-echo "  Total: 10 configurations producing valid DPO pairs"
+echo "  Total: 6 configurations producing valid DPO pairs"
 echo ""
 echo "EXCLUDED (no DPO pairs possible):"
 echo "  ❌ GSM8K (single solution per question)"
