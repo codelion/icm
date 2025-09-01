@@ -26,12 +26,26 @@ fi
 # python -m icm.cli clean --keep-latest 0
 
 echo ""
-echo "❌ SKIPPING HellaSwag: 0% confidence improvements = waste of compute time"
-echo "    Empirical testing showed no positive improvements in 20+ attempts"
+echo "1/5: HellaSwag (✓ 4 endings) - VERY RARE BUT POSSIBLE 🔴"
+echo "    Empirical confidence: 3.95%, 4.35% found after extended search - threshold=1.0%"
+python -m icm.cli run --model $MODEL \
+    --dataset Rowan/hellaswag \
+    --task-type hellaswag \
+    --alpha 200.0 \
+    --initial-temperature 15.0 \
+    --final-temperature 0.0001 \
+    --generation-temperature 0.8 \
+    --initial-examples 50 \
+    --max-examples -1 \
+    --max-iterations 30000 \
+    --cooling-rate 0.995 \
+    --confidence-threshold 0.01 \
+    --log-level INFO \
+    $DEVICE_ARG
 
 echo ""
-echo "1/3: PIQA (✓ 2 solutions per goal) - MEDIUM DIFFICULTY 🟡"
-echo "    Observed confidence: 1-11% mixed, threshold=1% to catch improvements"
+echo "2/5: PIQA (✓ 2 solutions per goal) - WORKABLE 🟡"
+echo "    Empirical confidence: 1.1%, 9.6%, 10.6% mixed - threshold=0.5%"
 python -m icm.cli run --model $MODEL \
     --dataset piqa \
     --task-type piqa \
@@ -39,21 +53,36 @@ python -m icm.cli run --model $MODEL \
     --initial-temperature 15.0 \
     --final-temperature 0.0001 \
     --generation-temperature 0.8 \
-    --initial-examples 75 \
-    --max-examples 800 \
-    --max-iterations 3000 \
+    --initial-examples 50 \
+    --max-examples -1 \
+    --max-iterations 25000 \
+    --cooling-rate 0.995 \
+    --confidence-threshold 0.005 \
+    --log-level INFO \
+    $DEVICE_ARG
+
+echo ""
+echo "3/5: ARC-Challenge - VERY DIFFICULT 🟠"
+echo "    Empirical confidence: 7.4% once then all 0.0% - threshold=1.0% for rare finds"
+python -m icm.cli run --model $MODEL \
+    --dataset allenai/ai2_arc \
+    --task-type arc_challenge \
+    --config ARC-Challenge \
+    --alpha 200.0 \
+    --initial-temperature 15.0 \
+    --final-temperature 0.0001 \
+    --generation-temperature 0.8 \
+    --initial-examples 50 \
+    --max-examples -1 \
+    --max-iterations 20000 \
     --cooling-rate 0.995 \
     --confidence-threshold 0.01 \
     --log-level INFO \
     $DEVICE_ARG
 
 echo ""
-echo "❌ SKIPPING ARC-Challenge: Science reasoning likely too hard for 270M model"
-echo "    Better to focus compute resources on datasets that actually work"
-
-echo ""
-echo "2/3: WinoGrande (✓ 2 options per sentence) - ✅ EASY & RELIABLE"
-echo "    Best dataset! Observed confidence: 7-11% consistently, threshold=5%"
+echo "4/5: WinoGrande (✓ 2 options per sentence) - ✅ EXCELLENT & RELIABLE"
+echo "    Empirical confidence: 7.4%, 10.4%, 10.9%, 11.2% consistently - threshold=3.0%"
 python -m icm.cli run --model $MODEL \
     --dataset allenai/winogrande \
     --task-type winogrande \
@@ -62,15 +91,15 @@ python -m icm.cli run --model $MODEL \
     --final-temperature 0.0001 \
     --generation-temperature 0.8 \
     --initial-examples 75 \
-    --max-examples 1000 \
-    --max-iterations 5000 \
+    --max-examples -1 \
+    --max-iterations 20000 \
     --cooling-rate 0.995 \
-    --confidence-threshold 0.05 \
+    --confidence-threshold 0.03 \
     --log-level INFO \
     $DEVICE_ARG
 
 echo ""
-echo "3/3: TruthfulQA multiple_choice - MEDIUM DIFFICULTY 🟡"
+echo "5/5: TruthfulQA multiple_choice - MEDIUM DIFFICULTY 🟡"
 echo "    Observed confidence: 10.5% then mostly 0%, threshold=2% to catch rare improvements"
 python -m icm.cli run --model $MODEL \
     --dataset truthful_qa \
@@ -81,72 +110,76 @@ python -m icm.cli run --model $MODEL \
     --final-temperature 0.0001 \
     --generation-temperature 0.8 \
     --initial-examples 75 \
-    --max-examples 400 \
-    --max-iterations 2000 \
+    --max-examples -1 \
+    --max-iterations 15000 \
     --cooling-rate 0.995 \
     --confidence-threshold 0.02 \
     --log-level INFO \
     $DEVICE_ARG
 
 echo ""
-echo "🔗 Creating DPO dataset from preference-capable benchmarks..."
+echo "🔗 Creating DPO dataset from ALL 5 benchmarks..."
 python -m icm.cli export-combined \
     --input-dir icm_results \
     --output-path gemma3_dpo_ready.jsonl \
     --fix-responses \
     --balance-strategy equal \
-    --max-per-benchmark 1000
+    --max-per-benchmark 2000
 
 echo ""
 echo "📊 Final DPO statistics..."
 if [ -f "gemma3_dpo_ready.jsonl" ]; then
     lines=$(wc -l < gemma3_dpo_ready.jsonl)
     echo "Total DPO preference pairs: $lines"
-    echo "Expected range: 300-800 pairs (from 3 working datasets only)"
-    echo "Quality over quantity: fewer but much more accurate labels"
+    echo "Expected range: 800-2500 pairs (from ALL 5 datasets with full scanning)"
+    echo "Quality: Empirically-tested thresholds ensure reliable labeling"
     echo "Sample DPO pair:"
     head -1 gemma3_dpo_ready.jsonl | python -m json.tool
 fi
 
 echo ""
-echo "✅ COMPLETE! OPTIMIZED ICM knowledge elicitation finished!"
+echo "✅ COMPLETE! COMPREHENSIVE ICM knowledge elicitation finished!"
 echo ""
-echo "🧠 Focused High-Quality Knowledge Elicitation Summary:"
-echo "  ✅ WinoGrande: Pronoun resolution (EASY - conf=5%, max=1000, iter=5000)"
-echo "  🟡 PIQA: Physical reasoning (MEDIUM - conf=1%, max=800, iter=3000)"
-echo "  🟡 TruthfulQA: Factual accuracy (MEDIUM - conf=2%, max=400, iter=2000)"
-echo "  ❌ HellaSwag: SKIPPED (0% confidence - waste of compute)"
-echo "  ❌ ARC-Challenge: SKIPPED (likely too hard for 270M model)"
-echo "  Total: 3 datasets that actually produce quality DPO data"
+echo "🧠 Full Dataset Coverage Knowledge Elicitation Summary:"
+echo "  ✅ WinoGrande: Pronoun resolution (EXCELLENT - conf=3%, max=-1, iter=20000)"
+echo "  🟡 PIQA: Physical reasoning (WORKABLE - conf=0.5%, max=-1, iter=25000)"
+echo "  🟡 TruthfulQA: Factual accuracy (MEDIUM - conf=2%, max=-1, iter=15000)"
+echo "  🔴 HellaSwag: Commonsense reasoning (VERY RARE - conf=1%, max=-1, iter=30000)"
+echo "  🟠 ARC-Challenge: Science reasoning (DIFFICULT - conf=1%, max=-1, iter=20000)"
+echo "  Total: ALL 5 datasets with full scanning and empirical thresholds"
 echo ""
-echo "🔍 Quality-Focused Strategy Benefits:"
-echo "  • Previous: 8.5% accuracy (wasted compute on impossible datasets)"
-echo "  • Expected: 70-85% accuracy (focus only on working datasets)"
-echo "  • Strategy: Skip datasets with 0% confidence, optimize for proven ones"
-echo "  • Result: Higher quality DPO data with better compute efficiency"
-echo "  • Key insight: Better to have 400 good pairs than 800 mixed quality pairs"
+echo "🔍 Comprehensive Full-Dataset Strategy Benefits:"
+echo "  • Previous: 8.5% accuracy (limited search with high thresholds)"
+echo "  • New approach: Full dataset scanning with empirically-tested thresholds"
+echo "  • Strategy: Include ALL datasets that show ANY positive confidence"
+echo "  • Result: Maximum coverage with quality assurance via proper thresholds"
+echo "  • Key insight: Even rare 1-4% confidence can yield valuable examples"
 echo ""
-echo "FOCUSED on 3 working datasets:"
-echo "  ✅ WinoGrande (7-11% confidence - most reliable)"
-echo "  🟡 PIQA (1-11% confidence - mixed but workable)"
-echo "  🟡 TruthfulQA (10.5% initial - rare but valuable improvements)"
+echo "INCLUDED datasets with empirical confidence ranges:"
+echo "  ✅ WinoGrande (7.4-11.2% confidence - most reliable producer)"
+echo "  🟡 PIQA (1.1-10.6% confidence - mixed but workable with patience)"
+echo "  🟡 TruthfulQA (10.5% initial drops - rare but high-value when found)"
+echo "  🔴 HellaSwag (3.95-4.35% confidence - rare but possible with large sample)"
+echo "  🟠 ARC-Challenge (7.4% once observed - difficult but not impossible)"
 echo ""
-echo "EXCLUDED datasets (waste compute or impossible):"
-echo "  ❌ HellaSwag (0% confidence - empirically proven impossible)"
-echo "  ❌ ARC-Challenge (science reasoning too hard for 270M)"
-echo "  ❌ GSM8K (single solution per question - no DPO pairs)"
-echo "  ❌ BigBench Hard (single answer per task - no DPO pairs)"
-echo "  ❌ IFEval (single instruction per example - no DPO pairs)"
+echo "BENEFITS of full dataset approach:"
+echo "  • No arbitrary dataset exclusions - test everything empirically"
+echo "  • Larger total pool increases DPO pair diversity"
+echo "  • Rare high-confidence examples from 'difficult' datasets add value"
+echo "  • Full scanning ensures we don't miss edge cases"
 echo ""
 echo "Next steps:"
-echo "1. Validate ICM results - expect 70-85% accuracy on these 3 working datasets"
-echo "2. WinoGrande should produce most labels (reliable 7-11% confidence)"
-echo "3. PIQA and TruthfulQA add diversity with occasional high-confidence examples"
-echo "4. If validation passes, fine-tune Gemma 3 270M-IT with high-quality DPO data"
-echo "4. Benefits of dataset-optimized ICM approach:"
-echo "   🧠 Elicits latent knowledge through mutual consistency"
-echo "   🔄 4x higher alpha prioritizes correct patterns"
-echo "   🌡️  Higher temperatures enable exploration"
-echo "   📊 3x more context improves pattern discovery"
-echo "   ⏱️  3x more iterations ensure convergence"
-echo "   ✅ No external supervision required"
+echo "1. Run full ICM scan on ALL 5 datasets with unlimited samples (max=-1)"
+echo "2. WinoGrande should produce most reliable labels (7.4-11.2% confidence)"
+echo "3. PIQA provides steady medium-confidence examples (1.1-10.6% range)"
+echo "4. TruthfulQA, HellaSwag, ARC contribute rare high-value examples"
+echo "5. Expect 800-2500 total DPO pairs from comprehensive approach"
+echo "6. If results validate, fine-tune Gemma 3 270M-IT with full dataset"
+echo ""
+echo "Benefits of comprehensive ICM approach:"
+echo "   🧠 Elicits latent knowledge through mutual consistency across ALL tasks"
+echo "   🔄 Empirical thresholds ensure quality while maximizing coverage"
+echo "   🌡️  Extended search finds rare but valuable high-confidence examples"
+echo "   📊 Full dataset scanning leaves no examples untested"
+echo "   ⏱️  Patient iteration counts allow convergence on difficult datasets"
+echo "   ✅ No external supervision - purely self-elicited knowledge"
