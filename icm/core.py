@@ -273,15 +273,10 @@ class ICMSearcher:
                     # Generate label for the example
                     new_label = self._generate_label(example, labeled_data, task_type)
                     
-                    # Calculate confidence for this labeling decision
+                    # Calculate confidence for this labeling decision (for logging only)
                     confidence = self._calculate_example_confidence(
                         example_idx, example, new_label, labeled_data, best_score
                     )
-                    
-                    # Only proceed if confidence meets threshold
-                    if confidence < self.confidence_threshold:
-                        self.logger.debug(f"Iteration {iteration}: Skipped example {example_idx}, low confidence {confidence:.3f} < {self.confidence_threshold}")
-                        continue
                     
                     # Create new labeled data with the proposed label
                     new_labeled_data = labeled_data.copy()
